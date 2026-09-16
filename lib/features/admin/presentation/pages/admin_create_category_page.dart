@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import 'package:provider/provider.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../../student/providers/category_provider.dart';
 
 class AdminCreateCategoryPage extends StatefulWidget {
   const AdminCreateCategoryPage({super.key});
@@ -33,11 +36,19 @@ class _AdminCreateCategoryPageState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final created = await context.read<CategoryProvider>().create(
+      name: _nameCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      isActive: _isActive,
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Category created (mock).');
-    Navigator.of(context).pop();
+    if (created != null) {
+      AppSnackbar.showSuccess(context, 'Category created.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not create category.');
+    }
   }
 
   @override
@@ -55,7 +66,6 @@ class _AdminCreateCategoryPageState
               AppTextField(
                 controller: _nameCtrl,
                 label: 'Category name',
-                hint: 'e.g., Mobile Development',
                 prefixIcon: Icons.category_outlined,
                 validator: (v) =>
                     Validators.minLength(v, 3, field: 'Category name'),
@@ -64,24 +74,48 @@ class _AdminCreateCategoryPageState
               AppTextField(
                 controller: _descCtrl,
                 label: 'Description (optional)',
-                hint: 'A short summary of what this category contains.',
                 maxLines: 4,
                 minLines: 2,
               ),
               const SizedBox(height: AppSpacing.md),
-              _switchRow(
-                title: 'Active on creation',
-                subtitle:
-                'Active categories are available for new courses.',
-                value: _isActive,
-                onChanged: (v) => setState(() => _isActive = v),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius:
+                  BorderRadius.circular(AppSpacing.radiusMd),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Active on creation',
+                              style: AppTextStyles.labelLarge),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Active categories are available for new courses.',
+                            style: AppTextStyles.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _isActive,
+                      onChanged: (v) => setState(() => _isActive = v),
+                      activeThumbColor: AppColors.primary,
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Create Category',
                 icon: Icons.check_rounded,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),
@@ -89,49 +123,4 @@ class _AdminCreateCategoryPageState
       ),
     );
   }
-
-  Widget _switchRow({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTextStyles_label),
-                const SizedBox(height: 2),
-                Text(subtitle, style: AppTextStyles_caption),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Simple local aliases to avoid importing app_text_styles just for two
-  // style references. Kept inline for brevity.
-  static const TextStyle AppTextStyles_label = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-  );
-  static const TextStyle AppTextStyles_caption = TextStyle(
-    fontSize: 12,
-  );
 }

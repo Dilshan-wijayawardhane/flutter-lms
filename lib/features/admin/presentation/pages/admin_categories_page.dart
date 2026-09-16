@@ -1,50 +1,57 @@
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import 'package:provider/provider.dart';
+
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_categories.dart';
-import '../../../../mock_data/models/mock_category.dart';
+import '../../../student/providers/category_provider.dart' hide LoadState;
 import '../widgets/category_card.dart';
 
 class AdminCategoriesPage extends StatefulWidget {
   const AdminCategoriesPage({super.key});
 
   @override
-  State<AdminCategoriesPage> createState() => _AdminCategoriesPageState();
+  State<AdminCategoriesPage> createState() =>
+      _AdminCategoriesPageState();
 }
 
 class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
-  late List<MockCategory> _categories;
-  int _tab = 0; // 0=All, 1=Active, 2=Inactive
+  int _tab = 0;
 
   @override
   void initState() {
     super.initState();
-    _categories = List.of(MockCategories.all);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<CategoryProvider>();
+      if (p.state != LoadState.success) p.load();
+    });
   }
 
-  List<MockCategory> get _filtered {
+  List<dynamic> _filtered(CategoryProvider p) {
     switch (_tab) {
       case 1:
-        return _categories.where((c) => c.isActive).toList();
+        return p.categories.where((c) => c.isActive).toList();
       case 2:
-        return _categories.where((c) => !c.isActive).toList();
+        return p.categories.where((c) => !c.isActive).toList();
       default:
-        return _categories;
+        return p.categories;
     }
   }
 
-  Future<void> _toggleActive(MockCategory cat) async {
+  Future<void> _toggle(dynamic cat) async {
     final action = cat.isActive ? 'Deactivate' : 'Activate';
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: '$action category?',
       message: cat.isActive
-          ? '"${cat.name}" will no longer be selectable for new courses.'
+          ? '"${cat.name}" will no longer be selectable.'
           : '"${cat.name}" will become available for new courses.',
       confirmLabel: action,
       isDestructive: cat.isActive,
@@ -53,19 +60,20 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
           : Icons.toggle_on_outlined,
     );
     if (!confirmed || !mounted) return;
-    setState(() {
-      final i = _categories.indexWhere((c) => c.id == cat.id);
-      if (i != -1) {
-        _categories[i] =
-            _categories[i].copyWith(isActive: !cat.isActive);
-      }
-    });
-    AppSnackbar.showSuccess(context, '$action successful (mock).');
+    final ok = await context
+        .read<CategoryProvider>()
+        .setActive(cat.id, !cat.isActive);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? '$action successful.' : 'Could not update.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final p = context.watch<CategoryProvider>();
+    final list = _filtered(p);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -92,32 +100,43 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
       ),
       body: SafeArea(
         top: false,
-        child: list.isEmpty
+        child: p.state == LoadState.loading && p.categories.isEmpty
+            ? const AppLoading(message: 'Loading categories…')
+            : p.state == LoadState.error && p.categories.isEmpty
+            ? AppErrorState(
+          title: 'Could not load categories',
+          message: p.errorMessage ?? 'Please try again.',
+          onRetry: () => p.load(force: true),
+        )
+            : list.isEmpty
             ? AppEmptyState(
           icon: Icons.category_outlined,
-          title: _emptyTitle,
-          message:
-          'Categories help organize courses on the platform.',
+          title: 'No categories',
+          message: 'Create the first category.',
           actionLabel: 'Create Category',
           onAction: () => Navigator.of(context)
               .pushNamed(AppRoutes.adminCreateCategory),
         )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: list.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) {
-            final c = list[i];
-            return CategoryCard(
-              category: c,
-              onEdit: () => Navigator.of(context).pushNamed(
-                AppRoutes.adminEditCategory,
-                arguments: c.id,
-              ),
-              onToggleActive: () => _toggleActive(c),
-            );
-          },
+            : RefreshIndicator(
+          onRefresh: () => p.load(force: true),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            itemCount: list.length,
+            separatorBuilder: (_, __) =>
+            const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (_, i) {
+              final c = list[i];
+              return CategoryCard(
+                category: c,
+                onEdit: () => Navigator.of(context)
+                    .pushNamed(
+                  AppRoutes.adminEditCategory,
+                  arguments: c.id,
+                ),
+                onToggleActive: () => _toggle(c),
+              );
+            },
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -127,17 +146,6 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
         label: const Text('New Category'),
       ),
     );
-  }
-
-  String get _emptyTitle {
-    switch (_tab) {
-      case 1:
-        return 'No active categories';
-      case 2:
-        return 'No inactive categories';
-      default:
-        return 'No categories yet';
-    }
   }
 
   Widget _chip(String label, int index) {

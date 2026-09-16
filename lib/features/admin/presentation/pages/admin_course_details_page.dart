@@ -1,75 +1,61 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
+import '../../../../core/widgets/app_empty_state.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
+import '../../providers/admin_course_provider.dart';
 
-class AdminCourseDetailsPage extends StatefulWidget {
+class AdminCourseDetailsPage extends StatelessWidget {
   const AdminCourseDetailsPage({super.key, required this.courseId});
 
   final String courseId;
 
-  @override
-  State<AdminCourseDetailsPage> createState() =>
-      _AdminCourseDetailsPageState();
-}
-
-class _AdminCourseDetailsPageState
-    extends State<AdminCourseDetailsPage> {
-  MockCourse? _course;
-
-  @override
-  void initState() {
-    super.initState();
-    _course = _find();
-  }
-
-  MockCourse? _find() {
-    for (final c in MockCourses.all) {
-      if (c.id == widget.courseId) return c;
-    }
-    return null;
-  }
-
-  Future<void> _archive() async {
+  Future<void> _archive(
+      BuildContext context,
+      AdminCourseProvider p,
+      Course c,
+      ) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Archive course?',
       message:
-      '"${_course!.title}" will be hidden from students and marked as '
-          'archived. You can restore it later.',
+      '"${c.title}" will be hidden from students and marked as archived.',
       confirmLabel: 'Archive',
       isDestructive: true,
       icon: Icons.archive_outlined,
     );
-    if (!confirmed || !mounted) return;
-    setState(() {
-      _course = _course!.copyWith(status: CourseStatus.archived);
-    });
-    AppSnackbar.showSuccess(context, 'Course archived (mock).');
+    if (!confirmed || !context.mounted) return;
+    final ok = await p.archive(c.id);
+    if (!context.mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course archived.' : 'Could not archive.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _course;
+    final p = context.watch<AdminCourseProvider>();
+    final c = p.byId(courseId);
+
     if (c == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('Course not found')),
+        body: const AppEmptyState(
+          icon: Icons.menu_book_outlined,
+          title: 'Course not found',
+          message: 'This course is not in the current list.',
+        ),
       );
     }
-
-    final sections = MockSections.byCourse(c.id);
-    final quizzes = MockQuizzes.byCourse(c.id);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -83,7 +69,6 @@ class _AdminCourseDetailsPageState
             const SizedBox(height: AppSpacing.md),
             _summary(c),
             const SizedBox(height: AppSpacing.lg),
-
             _sectionTitle('Instructor'),
             const SizedBox(height: AppSpacing.xs),
             _infoCard([
@@ -91,54 +76,31 @@ class _AdminCourseDetailsPageState
               _infoRow('Instructor ID', c.instructorId),
             ]),
             const SizedBox(height: AppSpacing.lg),
-
             _sectionTitle('Classification'),
             const SizedBox(height: AppSpacing.xs),
             _infoCard([
               _infoRow('Category', c.categoryName),
-              _infoRow('Level', c.level.label),
+              _infoRow('Level', c.level.name.toUpperCase()),
               _infoRow('Price',
                   c.price == 0 ? 'Free' : '\$${c.price.toStringAsFixed(2)}'),
             ]),
             const SizedBox(height: AppSpacing.lg),
-
-            _sectionTitle('Structure'),
-            const SizedBox(height: AppSpacing.xs),
-            _infoCard([
-              _infoRow('Sections', '${sections.length}'),
-              _infoRow('Lessons', '${c.lessonCount}'),
-              _infoRow('Quizzes', '${quizzes.length}'),
-              _infoRow('Duration',
-                  Formatters.duration(c.totalDurationMinutes)),
-            ]),
-            const SizedBox(height: AppSpacing.lg),
-
             _sectionTitle('Performance'),
             const SizedBox(height: AppSpacing.xs),
             _infoCard([
               _infoRow('Learners',
                   Formatters.count(c.learnerCount)),
-              _infoRow('Rating',
-                  '${c.rating.toStringAsFixed(1)} (${c.ratingCount})'),
-            ]),
-            const SizedBox(height: AppSpacing.lg),
-
-            _sectionTitle('Metadata'),
-            const SizedBox(height: AppSpacing.xs),
-            _infoCard([
-              _infoRow('Course ID', c.id),
-              if (c.createdAt != null)
-                _infoRow('Created', Formatters.date(c.createdAt)),
-              if (c.updatedAt != null)
-                _infoRow('Updated', Formatters.date(c.updatedAt)),
+              _infoRow(
+                'Rating',
+                '${c.rating.toStringAsFixed(1)} (${c.ratingCount})',
+              ),
             ]),
             const SizedBox(height: AppSpacing.xl),
-
             if (c.status != CourseStatus.archived)
               AppButton.danger(
                 label: 'Archive Course',
                 icon: Icons.archive_outlined,
-                onPressed: _archive,
+                onPressed: () => _archive(context, p, c),
               ),
           ],
         ),
@@ -146,7 +108,7 @@ class _AdminCourseDetailsPageState
     );
   }
 
-  Widget _hero(MockCourse c) {
+  Widget _hero(Course c) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -199,7 +161,7 @@ class _AdminCourseDetailsPageState
     ),
   );
 
-  Widget _summary(MockCourse c) {
+  Widget _summary(Course c) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -233,8 +195,8 @@ class _AdminCourseDetailsPageState
     );
   }
 
-  Widget _sectionTitle(String title) =>
-      Text(title, style: AppTextStyles.headingSmall);
+  Widget _sectionTitle(String t) =>
+      Text(t, style: AppTextStyles.headingSmall);
 
   Widget _infoCard(List<Widget> children) {
     return Container(

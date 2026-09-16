@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
+import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_users.dart';
+import '../../../student/providers/profile_provider.dart';
 
 class AdminAccountPage extends StatelessWidget {
   const AdminAccountPage({super.key});
@@ -16,8 +21,8 @@ class AdminAccountPage extends StatelessWidget {
       context,
       title: 'Deactivate account?',
       message:
-      'Your admin account will be deactivated. Contact support to '
-          'reactivate it.',
+      'Your admin account will be deactivated. Contact platform support '
+          'to reactivate it.',
       confirmLabel: 'Deactivate',
       isDestructive: true,
       icon: Icons.warning_amber_rounded,
@@ -25,41 +30,73 @@ class AdminAccountPage extends StatelessWidget {
     if (!confirmed || !context.mounted) return;
     AppSnackbar.showInfo(
       context,
-      'Deactivate action will call the backend in Phase 2.',
+      'Deactivate action will call the backend in a later phase.',
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = MockUsers.admin1;
+    final provider = context.watch<ProfileProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Account Details')),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _section('Account'),
-            _row('Full name', user.fullName),
-            _row('Email', user.email),
-            _row('Role', user.role.label),
-            _row('Status', user.status.label),
-            _row('User ID', user.id),
-            const SizedBox(height: AppSpacing.lg),
-            _section('Security'),
-            _row('Password', '••••••••',
-                trailing: 'Change in Change Password screen'),
-            const SizedBox(height: AppSpacing.xl),
-            AppButton.danger(
-              label: 'Deactivate Account',
-              icon: Icons.warning_amber_rounded,
-              onPressed: () => _deactivate(context),
-            ),
-          ],
-        ),
+        child: provider.isLoading && !provider.hasProfile
+            ? const AppLoading(message: 'Loading account…')
+            : provider.profile == null
+            ? const AppEmptyState(
+          icon: Icons.badge_outlined,
+          title: 'No account data',
+          message: 'Your account details are not available yet.',
+        )
+            : _body(context, provider),
       ),
+    );
+  }
+
+  Widget _body(BuildContext context, ProfileProvider provider) {
+    final p = provider.profile!;
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        _section('Account'),
+        _infoCard([
+          _infoRow('Full name', p.fullName),
+          _infoRow('Email', p.email),
+          _infoRow('Role', p.role),
+          _infoRow('Status', p.status),
+          _infoRow('Email verified', p.isEmailVerified ? 'Yes' : 'No'),
+          _infoRow('User ID', p.id),
+        ]),
+        if (p.createdAt != null) ...[
+          const SizedBox(height: AppSpacing.lg),
+          _section('Membership'),
+          _infoCard([
+            _infoRow('Joined', Formatters.date(p.createdAt)),
+          ]),
+        ],
+        const SizedBox(height: AppSpacing.lg),
+        _section('Security'),
+        _infoCard([
+          _infoRow(
+            'Password',
+            '••••••••',
+          ),
+          _infoRow(
+            'Change password',
+            'Use the Change Password screen',
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.xl),
+        AppButton.danger(
+          label: 'Deactivate Account',
+          icon: Icons.warning_amber_rounded,
+          onPressed: () => _deactivate(context),
+        ),
+      ],
     );
   }
 
@@ -68,9 +105,8 @@ class AdminAccountPage extends StatelessWidget {
     child: Text(title, style: AppTextStyles.headingSmall),
   );
 
-  Widget _row(String label, String value, {String? trailing}) {
+  Widget _infoCard(List<Widget> children) {
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.xs),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -78,17 +114,34 @@ class AdminAccountPage extends StatelessWidget {
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: AppTextStyles.caption),
-          const SizedBox(height: 2),
-          Text(value, style: AppTextStyles.labelLarge),
-          if (trailing != null) ...[
-            const SizedBox(height: 2),
-            Text(trailing, style: AppTextStyles.caption),
+          for (int i = 0; i < children.length; i++) ...[
+            children[i],
+            if (i < children.length - 1)
+              const Divider(height: AppSpacing.lg),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(label, style: AppTextStyles.bodySmall),
+        ),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            style: AppTextStyles.labelLarge,
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 }

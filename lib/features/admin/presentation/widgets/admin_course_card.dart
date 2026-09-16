@@ -5,9 +5,8 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
 
-/// Course row used on the admin all-courses list.
 class AdminCourseCard extends StatelessWidget {
   const AdminCourseCard({
     super.key,
@@ -15,7 +14,7 @@ class AdminCourseCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockCourse course;
+  final Course course;
   final VoidCallback? onTap;
 
   @override
@@ -56,40 +55,28 @@ class AdminCourseCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      course.instructorName,
-                      style: AppTextStyles.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    Text(course.instructorName,
+                        style: AppTextStyles.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(
-                          Icons.category_outlined,
-                          size: 14,
-                          color: AppColors.textTertiary,
-                        ),
+                        const Icon(Icons.category_outlined,
+                            size: 14, color: AppColors.textTertiary),
                         const SizedBox(width: 4),
                         Flexible(
-                          child: Text(
-                            course.categoryName,
-                            style: AppTextStyles.caption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: Text(course.categoryName,
+                              style: AppTextStyles.caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
                         ),
                         const SizedBox(width: AppSpacing.sm),
-                        const Icon(
-                          Icons.people_alt_outlined,
-                          size: 14,
-                          color: AppColors.textTertiary,
-                        ),
+                        const Icon(Icons.people_alt_outlined,
+                            size: 14, color: AppColors.textTertiary),
                         const SizedBox(width: 4),
-                        Text(
-                          Formatters.count(course.learnerCount),
-                          style: AppTextStyles.caption,
-                        ),
+                        Text(Formatters.count(course.learnerCount),
+                            style: AppTextStyles.caption),
                       ],
                     ),
                   ],

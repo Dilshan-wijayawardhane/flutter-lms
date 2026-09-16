@@ -4,15 +4,12 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
-import '../../../../mock_data/models/mock_user.dart';
 
-/// Public payload type used to pass filter values to and from
-/// [AdminUserFilterPage].
 class AdminUserFilterArgs {
   const AdminUserFilterArgs({this.role, this.status});
 
-  final UserRole? role;
-  final UserStatus? status;
+  final String? role;
+  final String? status;
 }
 
 class AdminUserFilterPage extends StatefulWidget {
@@ -25,8 +22,11 @@ class AdminUserFilterPage extends StatefulWidget {
 }
 
 class _AdminUserFilterPageState extends State<AdminUserFilterPage> {
-  UserRole? _role;
-  UserStatus? _status;
+  static const _roles = ['STUDENT', 'INSTRUCTOR', 'ADMIN'];
+  static const _statuses = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
+
+  String? _role;
+  String? _status;
 
   @override
   void initState() {
@@ -68,9 +68,9 @@ class _AdminUserFilterPageState extends State<AdminUserFilterPage> {
           children: [
             Text('Role', style: AppTextStyles.headingSmall),
             const SizedBox(height: AppSpacing.xs),
-            ...UserRole.values.map(
+            ..._roles.map(
                   (r) => _option(
-                label: r.label,
+                label: r,
                 selected: _role == r,
                 onTap: () => setState(
                       () => _role = _role == r ? null : r,
@@ -80,9 +80,9 @@ class _AdminUserFilterPageState extends State<AdminUserFilterPage> {
             const SizedBox(height: AppSpacing.lg),
             Text('Status', style: AppTextStyles.headingSmall),
             const SizedBox(height: AppSpacing.xs),
-            ...UserStatus.values.map(
+            ..._statuses.map(
                   (s) => _option(
-                label: s.label,
+                label: s,
                 selected: _status == s,
                 onTap: () => setState(
                       () => _status = _status == s ? null : s,

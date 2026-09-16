@@ -4,9 +4,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
-import '../../../../mock_data/mock_categories.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
+import '../../../student/providers/category_provider.dart';
 import 'admin_courses_page.dart' show AdminCourseFilterArgs;
+import 'package:provider/provider.dart';
 
 class AdminCourseFilterPage extends StatefulWidget {
   const AdminCourseFilterPage({super.key, this.initial});
@@ -31,10 +32,7 @@ class _AdminCourseFilterPageState extends State<AdminCourseFilterPage> {
 
   void _apply() {
     Navigator.of(context).pop(
-      AdminCourseFilterArgs(
-        status: _status,
-        categoryId: _categoryId,
-      ),
+      AdminCourseFilterArgs(status: _status, categoryId: _categoryId),
     );
   }
 
@@ -47,6 +45,8 @@ class _AdminCourseFilterPageState extends State<AdminCourseFilterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final categories = context.watch<CategoryProvider>().categories;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -67,7 +67,7 @@ class _AdminCourseFilterPageState extends State<AdminCourseFilterPage> {
             const SizedBox(height: AppSpacing.xs),
             ...CourseStatus.values.map(
                   (s) => _option(
-                label: s.label,
+                label: s.name.toUpperCase(),
                 selected: _status == s,
                 onTap: () => setState(
                       () => _status = _status == s ? null : s,
@@ -77,7 +77,7 @@ class _AdminCourseFilterPageState extends State<AdminCourseFilterPage> {
             const SizedBox(height: AppSpacing.lg),
             Text('Category', style: AppTextStyles.headingSmall),
             const SizedBox(height: AppSpacing.xs),
-            ...MockCategories.all.map(
+            ...categories.map(
                   (c) => _option(
                 label: c.name,
                 selected: _categoryId == c.id,

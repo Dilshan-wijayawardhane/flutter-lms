@@ -5,9 +5,8 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_user.dart';
+import '../../../student/data/models/user_profile.dart';
 
-/// User row used on the admin users list.
 class UserCard extends StatelessWidget {
   const UserCard({
     super.key,
@@ -15,7 +14,7 @@ class UserCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockUser user;
+  final UserProfile user;
   final VoidCallback? onTap;
 
   @override
@@ -80,12 +79,13 @@ class UserCard extends StatelessWidget {
     );
   }
 
-  Widget _roleChip(UserRole role) {
-    final color = switch (role) {
-      UserRole.student => AppColors.info,
-      UserRole.instructor => AppColors.primary,
-      UserRole.admin => AppColors.warning,
-    };
+  Widget _roleChip(String role) {
+    final upper = role.toUpperCase();
+    final color = upper == 'STUDENT'
+        ? AppColors.info
+        : upper == 'INSTRUCTOR'
+        ? AppColors.primary
+        : AppColors.warning;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
@@ -96,26 +96,21 @@ class UserCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
       ),
       child: Text(
-        role.label.toUpperCase(),
+        upper,
         style: AppTextStyles.labelSmall.copyWith(color: color),
       ),
     );
   }
 
-  Widget _statusChip(UserStatus status) {
-    switch (status) {
-      case UserStatus.active:
+  Widget _statusChip(String status) {
+    final upper = status.toUpperCase();
+    switch (upper) {
+      case 'ACTIVE':
         return const AppStatusChip(status: AppStatus.active, dense: true);
-      case UserStatus.inactive:
-        return const AppStatusChip(
-          status: AppStatus.inactive,
-          dense: true,
-        );
-      case UserStatus.suspended:
-        return const AppStatusChip(
-          status: AppStatus.suspended,
-          dense: true,
-        );
+      case 'SUSPENDED':
+        return const AppStatusChip(status: AppStatus.suspended, dense: true);
+      default:
+        return const AppStatusChip(status: AppStatus.inactive, dense: true);
     }
   }
 }

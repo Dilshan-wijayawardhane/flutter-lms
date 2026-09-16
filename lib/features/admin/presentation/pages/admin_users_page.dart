@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_search_bar.dart';
-import '../../../../mock_data/mock_users.dart';
-import '../../../../mock_data/models/mock_user.dart';
+import '../../providers/admin_user_provider.dart';
 import '../widgets/user_card.dart';
+import 'admin_user_filter_page.dart' show AdminUserFilterArgs;
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key});
@@ -19,9 +23,15 @@ class AdminUsersPage extends StatefulWidget {
 
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final _searchCtrl = TextEditingController();
-  String _query = '';
-  UserRole? _roleFilter;
-  UserStatus? _statusFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<AdminUserProvider>();
+      if (p.state != LoadState.success) p.load();
+    });
+  }
 
   @override
   void dispose() {
@@ -29,31 +39,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     super.dispose();
   }
 
-  List<MockUser> get _filtered {
-    return MockUsers.all.where((u) {
-      final matchesQuery = _query.isEmpty ||
-          u.fullName.toLowerCase().contains(_query.toLowerCase()) ||
-          u.email.toLowerCase().contains(_query.toLowerCase());
-      final matchesRole = _roleFilter == null || u.role == _roleFilter;
-      final matchesStatus =
-          _statusFilter == null || u.status == _statusFilter;
-      return matchesQuery && matchesRole && matchesStatus;
-    }).toList();
-  }
-
-  bool get _hasActiveFilters =>
-      _roleFilter != null || _statusFilter != null;
-
-  void _clearFilters() {
-    setState(() {
-      _roleFilter = null;
-      _statusFilter = null;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final p = context.watch<AdminUserProvider>();
+    final hasFilters =
+        p.roleFilter != null || p.statusFilter != null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -61,9 +51,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         title: const Text('Users'),
         automaticallyImplyLeading: false,
         actions: [
-          if (_hasActiveFilters)
+          if (hasFilters)
             TextButton(
-              onPressed: _clearFilters,
+              onPressed: p.clearFilters,
               child: const Text('Clear'),
             ),
         ],
@@ -82,62 +72,78 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
               child: AppSearchBar(
                 controller: _searchCtrl,
                 hint: 'Search by name or email',
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) => p.setSearch(v),
                 onFilterTap: () async {
                   final result = await Navigator.of(context).pushNamed(
                     AppRoutes.adminUserFilter,
-                    arguments: _AdminUserFilterArgs(
-                      role: _roleFilter,
-                      status: _statusFilter,
+                    arguments: AdminUserFilterArgs(
+                      role: p.roleFilter,
+                      status: p.statusFilter,
                     ),
                   );
-                  if (result is _AdminUserFilterArgs) {
-                    setState(() {
-                      _roleFilter = result.role;
-                      _statusFilter = result.status;
-                    });
+                  if (result is AdminUserFilterArgs) {
+                    await p.setFilters(
+                      role: result.role,
+                      status: result.status,
+                    );
                   }
                 },
               ),
             ),
-            if (_hasActiveFilters) _filterChips(),
-            Expanded(
-              child: list.isEmpty
-                  ? const AppEmptyState(
-                icon: Icons.people_alt_outlined,
-                title: 'No users found',
-                message:
-                'Try a different search or clear your filters.',
-              )
-                  : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  0,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                ),
-                itemCount: list.length,
-                separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSpacing.sm),
-                itemBuilder: (_, i) {
-                  final u = list[i];
-                  return UserCard(
-                    user: u,
-                    onTap: () => Navigator.of(context).pushNamed(
-                      AppRoutes.adminUserDetails,
-                      arguments: u.id,
-                    ),
-                  );
-                },
-              ),
-            ),
+            if (hasFilters) _filterChips(p),
+            Expanded(child: _body(p)),
           ],
         ),
       ),
     );
   }
 
-  Widget _filterChips() {
+  Widget _body(AdminUserProvider p) {
+    if (p.state == LoadState.loading && p.users.isEmpty) {
+      return const AppLoading(message: 'Loading users…');
+    }
+    if (p.state == LoadState.error && p.users.isEmpty) {
+      return AppErrorState(
+        title: 'Could not load users',
+        message: p.errorMessage ?? 'Please try again.',
+        onRetry: () => p.load(force: true),
+      );
+    }
+    if (p.users.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.people_alt_outlined,
+        title: 'No users found',
+        message: 'Try a different search or clear your filters.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => p.load(force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.lg,
+        ),
+        itemCount: p.users.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) {
+          final u = p.users[i];
+          return UserCard(
+            user: u,
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.adminUserDetails,
+              arguments: u.id,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _filterChips(AdminUserProvider p) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -145,30 +151,26 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         AppSpacing.md,
         AppSpacing.sm,
       ),
-      child: Row(
+      child: Wrap(
+        spacing: AppSpacing.xs,
+        runSpacing: AppSpacing.xs,
         children: [
-          if (_roleFilter != null)
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.xs),
-              child: _filterChip(
-                label: _roleFilter!.label,
-                onRemove: () => setState(() => _roleFilter = null),
-              ),
+          if (p.roleFilter != null)
+            _chip(
+              p.roleFilter!,
+                  () => p.setFilters(status: p.statusFilter),
             ),
-          if (_statusFilter != null)
-            _filterChip(
-              label: _statusFilter!.label,
-              onRemove: () => setState(() => _statusFilter = null),
+          if (p.statusFilter != null)
+            _chip(
+              p.statusFilter!,
+                  () => p.setFilters(role: p.roleFilter),
             ),
         ],
       ),
     );
   }
 
-  Widget _filterChip({
-    required String label,
-    required VoidCallback onRemove,
-  }) {
+  Widget _chip(String label, VoidCallback onRemove) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
@@ -200,12 +202,4 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       ),
     );
   }
-}
-
-/// Payload passed to and returned from the filter page.
-class _AdminUserFilterArgs {
-  const _AdminUserFilterArgs({this.role, this.status});
-
-  final UserRole? role;
-  final UserStatus? status;
 }

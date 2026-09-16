@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_search_bar.dart';
-import '../../../../mock_data/mock_categories.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
+import '../../providers/admin_course_provider.dart';
 import '../widgets/admin_course_card.dart';
 
-/// Filter arguments returned from [AdminCourseFilterPage].
 class AdminCourseFilterArgs {
   const AdminCourseFilterArgs({this.status, this.categoryId});
-
   final CourseStatus? status;
   final String? categoryId;
 }
@@ -28,9 +29,15 @@ class AdminCoursesPage extends StatefulWidget {
 
 class _AdminCoursesPageState extends State<AdminCoursesPage> {
   final _searchCtrl = TextEditingController();
-  String _query = '';
-  CourseStatus? _statusFilter;
-  String? _categoryIdFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<AdminCourseProvider>();
+      if (p.state != LoadState.success) p.load();
+    });
+  }
 
   @override
   void dispose() {
@@ -38,40 +45,10 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     super.dispose();
   }
 
-  List<MockCourse> get _filtered {
-    return MockCourses.all.where((c) {
-      final matchesQuery = _query.isEmpty ||
-          c.title.toLowerCase().contains(_query.toLowerCase()) ||
-          c.instructorName.toLowerCase().contains(_query.toLowerCase());
-      final matchesStatus =
-          _statusFilter == null || c.status == _statusFilter;
-      final matchesCategory =
-          _categoryIdFilter == null || c.categoryId == _categoryIdFilter;
-      return matchesQuery && matchesStatus && matchesCategory;
-    }).toList();
-  }
-
-  bool get _hasActiveFilters =>
-      _statusFilter != null || _categoryIdFilter != null;
-
-  void _clearFilters() {
-    setState(() {
-      _statusFilter = null;
-      _categoryIdFilter = null;
-    });
-  }
-
-  String? get _categoryFilterLabel {
-    if (_categoryIdFilter == null) return null;
-    for (final c in MockCategories.all) {
-      if (c.id == _categoryIdFilter) return c.name;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final p = context.watch<AdminCourseProvider>();
+    final hasFilters = p.statusFilter != null || p.categoryFilter != null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -79,9 +56,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         title: const Text('All Courses'),
         automaticallyImplyLeading: false,
         actions: [
-          if (_hasActiveFilters)
+          if (hasFilters)
             TextButton(
-              onPressed: _clearFilters,
+              onPressed: p.clearFilters,
               child: const Text('Clear'),
             ),
         ],
@@ -100,62 +77,78 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               child: AppSearchBar(
                 controller: _searchCtrl,
                 hint: 'Search courses or instructors',
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) => p.setSearch(v),
                 onFilterTap: () async {
                   final result = await Navigator.of(context).pushNamed(
                     AppRoutes.adminCourseFilter,
                     arguments: AdminCourseFilterArgs(
-                      status: _statusFilter,
-                      categoryId: _categoryIdFilter,
+                      status: p.statusFilter,
+                      categoryId: p.categoryFilter,
                     ),
                   );
                   if (result is AdminCourseFilterArgs) {
-                    setState(() {
-                      _statusFilter = result.status;
-                      _categoryIdFilter = result.categoryId;
-                    });
+                    await p.setFilters(
+                      status: result.status,
+                      categoryId: result.categoryId,
+                    );
                   }
                 },
               ),
             ),
-            if (_hasActiveFilters) _filterChips(),
-            Expanded(
-              child: list.isEmpty
-                  ? const AppEmptyState(
-                icon: Icons.menu_book_outlined,
-                title: 'No courses found',
-                message:
-                'Try a different search or clear your filters.',
-              )
-                  : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  0,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                ),
-                itemCount: list.length,
-                separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSpacing.sm),
-                itemBuilder: (_, i) {
-                  final c = list[i];
-                  return AdminCourseCard(
-                    course: c,
-                    onTap: () => Navigator.of(context).pushNamed(
-                      AppRoutes.adminCourseDetails,
-                      arguments: c.id,
-                    ),
-                  );
-                },
-              ),
-            ),
+            if (hasFilters) _filterChips(p),
+            Expanded(child: _body(p)),
           ],
         ),
       ),
     );
   }
 
-  Widget _filterChips() {
+  Widget _body(AdminCourseProvider p) {
+    if (p.state == LoadState.loading && p.courses.isEmpty) {
+      return const AppLoading(message: 'Loading courses…');
+    }
+    if (p.state == LoadState.error && p.courses.isEmpty) {
+      return AppErrorState(
+        title: 'Could not load courses',
+        message: p.errorMessage ?? 'Please try again.',
+        onRetry: () => p.load(force: true),
+      );
+    }
+    if (p.courses.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.menu_book_outlined,
+        title: 'No courses found',
+        message: 'Try a different search or clear your filters.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => p.load(force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.lg,
+        ),
+        itemCount: p.courses.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) {
+          final c = p.courses[i];
+          return AdminCourseCard(
+            course: c,
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.adminCourseDetails,
+              arguments: c.id,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _filterChips(AdminCourseProvider p) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -167,25 +160,18 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         spacing: AppSpacing.xs,
         runSpacing: AppSpacing.xs,
         children: [
-          if (_statusFilter != null)
-            _filterChip(
-              label: _statusFilter!.label,
-              onRemove: () => setState(() => _statusFilter = null),
-            ),
-          if (_categoryFilterLabel != null)
-            _filterChip(
-              label: _categoryFilterLabel!,
-              onRemove: () => setState(() => _categoryIdFilter = null),
-            ),
+          if (p.statusFilter != null)
+            _chip(p.statusFilter!.name.toUpperCase(),
+                    () => p.setFilters(categoryId: p.categoryFilter)),
+          if (p.categoryFilter != null)
+            _chip(p.categoryFilter!,
+                    () => p.setFilters(status: p.statusFilter)),
         ],
       ),
     );
   }
 
-  Widget _filterChip({
-    required String label,
-    required VoidCallback onRemove,
-  }) {
+  Widget _chip(String label, VoidCallback onRemove) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,

@@ -34,7 +34,12 @@ class _AdminChangePasswordPageState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+
+    // The change-password endpoint is not wired in this phase. When you
+    // confirm the exact path from Postman, replace the delay below with
+    // an ApiClient.post call.
     await Future.delayed(const Duration(milliseconds: 600));
+
     if (!mounted) return;
     setState(() => _saving = false);
     AppSnackbar.showSuccess(context, 'Password updated (mock).');
@@ -78,7 +83,7 @@ class _AdminChangePasswordPageState
               AppButton.primary(
                 label: 'Update Password',
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),

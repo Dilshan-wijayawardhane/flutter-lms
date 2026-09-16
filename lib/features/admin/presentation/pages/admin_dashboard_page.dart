@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -6,38 +7,88 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/mock_reviews.dart';
-import '../../../../mock_data/mock_stats.dart';
-import '../../../../mock_data/mock_users.dart';
-import '../../../../mock_data/models/mock_course.dart';
-import '../../../../mock_data/models/mock_user.dart';
+import '../../../student/providers/profile_provider.dart';
+import '../../providers/admin_course_provider.dart';
+import '../../providers/admin_user_provider.dart';
 import '../widgets/admin_dashboard_section.dart';
 import '../widgets/admin_stat_card.dart';
 import '../widgets/user_card.dart';
 
-class AdminDashboardPage extends StatelessWidget {
+class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
   @override
+  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
+
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final profile = context.read<ProfileProvider>();
+      if (!profile.hasProfile) profile.load();
+
+      context.read<AdminUserProvider>().load();
+      context.read<AdminCourseProvider>().load();
+    });
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      context.read<ProfileProvider>().load(force: true),
+      context.read<AdminUserProvider>().load(force: true),
+      context.read<AdminCourseProvider>().load(force: true),
+    ]);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.admin1;
-    final stats = MockStats.admin;
+    final profile = context.watch<ProfileProvider>().profile;
+    final usersP = context.watch<AdminUserProvider>();
+    final coursesP = context.watch<AdminCourseProvider>();
+
+    final users = usersP.users;
+    final courses = coursesP.courses;
+
+    final students = users
+        .where((u) => u.role.toUpperCase() == 'STUDENT')
+        .length;
+    final instructors = users
+        .where((u) => u.role.toUpperCase() == 'INSTRUCTOR')
+        .length;
+    final active =
+        users.where((u) => u.status.toUpperCase() == 'ACTIVE').length;
+    final suspended = users
+        .where((u) => u.status.toUpperCase() == 'SUSPENDED')
+        .length;
+    final published = courses
+        .where((c) => c.status.name.toUpperCase() == 'PUBLISHED')
+        .length;
+    final drafts = courses
+        .where((c) => c.status.name.toUpperCase() == 'DRAFT')
+        .length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            await Future.delayed(const Duration(milliseconds: 600));
-          },
+          onRefresh: _refresh,
           child: ListView(
             padding: const EdgeInsets.only(bottom: AppSpacing.xl),
             children: [
-              _header(context, profile.fullName),
+              _header(profile?.fullName ?? 'Admin'),
               const SizedBox(height: AppSpacing.md),
-              _statsGrid(stats),
+              _statsGrid(
+                users: users.length,
+                students: students,
+                instructors: instructors,
+                active: active,
+                suspended: suspended,
+                courses: courses.length,
+                published: published,
+                drafts: drafts,
+              ),
               const SizedBox(height: AppSpacing.md),
               _quickActions(context),
               AdminDashboardSection(
@@ -45,12 +96,17 @@ class AdminDashboardPage extends StatelessWidget {
                 actionLabel: 'See all',
                 onActionTap: () => Navigator.of(context)
                     .pushNamed(AppRoutes.adminUsers),
-                child: Padding(
+                child: users.isEmpty
+                    ? const Padding(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  child: Text('No users'),
+                )
+                    : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
                   ),
                   child: Column(
-                    children: MockUsers.all
+                    children: users
                         .take(3)
                         .map((u) => Padding(
                       padding: const EdgeInsets.only(
@@ -58,11 +114,11 @@ class AdminDashboardPage extends StatelessWidget {
                       ),
                       child: UserCard(
                         user: u,
-                        onTap: () =>
-                            Navigator.of(context).pushNamed(
-                              AppRoutes.adminUserDetails,
-                              arguments: u.id,
-                            ),
+                        onTap: () => Navigator.of(context)
+                            .pushNamed(
+                          AppRoutes.adminUserDetails,
+                          arguments: u.id,
+                        ),
                       ),
                     ))
                         .toList(),
@@ -74,59 +130,23 @@ class AdminDashboardPage extends StatelessWidget {
                 actionLabel: 'See all',
                 onActionTap: () => Navigator.of(context)
                     .pushNamed(AppRoutes.adminCourses),
-                child: Padding(
+                child: courses.isEmpty
+                    ? const Padding(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  child: Text('No courses'),
+                )
+                    : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
                   ),
                   child: Column(
-                    children: MockCourses.all
+                    children: courses
                         .take(3)
                         .map((c) => Padding(
                       padding: const EdgeInsets.only(
                         bottom: AppSpacing.sm,
                       ),
                       child: _courseRow(context, c),
-                    ))
-                        .toList(),
-                  ),
-                ),
-              ),
-              AdminDashboardSection(
-                title: 'Recent Reviews',
-                actionLabel: 'Moderate',
-                onActionTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.adminReviews),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  child: Column(
-                    children: MockReviews.all
-                        .take(3)
-                        .map((r) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: _reviewRow(r),
-                    ))
-                        .toList(),
-                  ),
-                ),
-              ),
-              AdminDashboardSection(
-                title: 'Recent Submissions',
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  child: Column(
-                    children: MockSubmissions.all
-                        .take(3)
-                        .map((s) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: _submissionRow(s),
                     ))
                         .toList(),
                   ),
@@ -139,7 +159,7 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _header(BuildContext context, String name) {
+  Widget _header(String name) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12
         ? 'Good morning'
@@ -186,58 +206,66 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _statsGrid(stats) {
+  Widget _statsGrid({
+    required int users,
+    required int students,
+    required int instructors,
+    required int active,
+    required int suspended,
+    required int courses,
+    required int published,
+    required int drafts,
+  }) {
     final tiles = [
       AdminStatCard(
         label: 'Total Users',
-        value: '${stats.totalUsers}',
+        value: '$users',
         icon: Icons.people_alt_outlined,
         color: AppColors.primary,
-        subtitle: '${stats.activeUsers} active',
+        subtitle: '$active active',
       ),
       AdminStatCard(
         label: 'Students',
-        value: '${stats.totalStudents}',
+        value: '$students',
         icon: Icons.school_outlined,
         color: AppColors.info,
       ),
       AdminStatCard(
         label: 'Instructors',
-        value: '${stats.totalInstructors}',
+        value: '$instructors',
         icon: Icons.co_present_outlined,
         color: AppColors.warning,
       ),
       AdminStatCard(
         label: 'Suspended',
-        value: '${stats.suspendedUsers}',
+        value: '$suspended',
         icon: Icons.block_outlined,
         color: AppColors.danger,
       ),
       AdminStatCard(
         label: 'Courses',
-        value: '${stats.totalCourses}',
+        value: '$courses',
         icon: Icons.menu_book_outlined,
         color: AppColors.primary,
-        subtitle: '${stats.publishedCourses} published',
-      ),
-      AdminStatCard(
-        label: 'Enrollments',
-        value: Formatters.count(stats.totalEnrollments),
-        icon: Icons.how_to_reg_outlined,
-        color: AppColors.success,
-      ),
-      AdminStatCard(
-        label: 'Reviews',
-        value: '${stats.totalReviews}',
-        icon: Icons.rate_review_outlined,
-        color: AppColors.info,
-        subtitle: '${stats.hiddenReviews} hidden',
+        subtitle: '$published published',
       ),
       AdminStatCard(
         label: 'Draft Courses',
-        value: '${stats.draftCourses}',
+        value: '$drafts',
         icon: Icons.edit_outlined,
         color: AppColors.warning,
+      ),
+      AdminStatCard(
+        label: 'Active Users',
+        value: '$active',
+        icon: Icons.check_circle_outline_rounded,
+        color: AppColors.success,
+      ),
+      AdminStatCard(
+        label: 'Published',
+        value: '$published',
+        icon: Icons.publish_outlined,
+        color: AppColors.info,
       ),
     ];
 
@@ -275,8 +303,8 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.category_outlined,
         label: 'Categories',
         color: AppColors.warning,
-        onTap: () =>
-            Navigator.of(context).pushNamed(AppRoutes.adminCategories),
+        onTap: () => Navigator.of(context)
+            .pushNamed(AppRoutes.adminCategories),
       ),
       _QuickAction(
         icon: Icons.rate_review_outlined,
@@ -340,7 +368,7 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _courseRow(BuildContext context, MockCourse c) {
+  Widget _courseRow(BuildContext context, dynamic c) {
     return Material(
       color: AppColors.card,
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -389,100 +417,12 @@ class AdminDashboardPage extends StatelessWidget {
                 ),
               ),
               Text(
-                '${c.learnerCount}',
+                Formatters.count(c.learnerCount),
                 style: AppTextStyles.labelLarge,
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _reviewRow(review) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          AppAvatar(name: review.studentName, size: 36),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(review.studentName,
-                          style: AppTextStyles.labelLarge,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    Row(
-                      children: List.generate(
-                        review.rating,
-                            (_) => const Icon(
-                          Icons.star_rounded,
-                          size: 12,
-                          color: AppColors.star,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  review.comment,
-                  style: AppTextStyles.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _submissionRow(submission) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          AppAvatar(name: submission.studentName, size: 36),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(submission.studentName,
-                    style: AppTextStyles.labelLarge,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(submission.assignmentTitle,
-                    style: AppTextStyles.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Text(
-            Formatters.relative(submission.submittedAt),
-            style: AppTextStyles.caption,
-          ),
-        ],
       ),
     );
   }

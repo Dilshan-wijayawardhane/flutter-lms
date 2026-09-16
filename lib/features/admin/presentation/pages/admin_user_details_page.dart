@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -7,77 +8,67 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
+import '../../../../core/widgets/app_empty_state.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_users.dart';
-import '../../../../mock_data/models/mock_user.dart';
+import '../../providers/admin_user_provider.dart';
 
-class AdminUserDetailsPage extends StatefulWidget {
+class AdminUserDetailsPage extends StatelessWidget {
   const AdminUserDetailsPage({super.key, required this.userId});
 
   final String userId;
 
-  @override
-  State<AdminUserDetailsPage> createState() => _AdminUserDetailsPageState();
-}
-
-class _AdminUserDetailsPageState extends State<AdminUserDetailsPage> {
-  late MockUser? _user;
-
-  @override
-  void initState() {
-    super.initState();
-    _user = _find();
-  }
-
-  MockUser? _find() {
-    for (final u in MockUsers.all) {
-      if (u.id == widget.userId) return u;
-    }
-    return null;
-  }
-
-  Future<void> _suspend() async {
+  Future<void> _suspend(BuildContext context, AdminUserProvider p) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Suspend user?',
       message:
-      '${_user!.fullName} will be suspended and unable to log in until '
-          'reactivated.',
+      'The user will be suspended and unable to log in until reactivated.',
       confirmLabel: 'Suspend',
       isDestructive: true,
       icon: Icons.block_outlined,
     );
-    if (!confirmed || !mounted) return;
-    setState(() {
-      _user = _user!.copyWith(status: UserStatus.suspended);
-    });
-    AppSnackbar.showSuccess(context, 'User suspended (mock).');
+    if (!confirmed || !context.mounted) return;
+    final ok = await p.suspend(userId);
+    if (!context.mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'User suspended.');
+    } else {
+      AppSnackbar.showError(context, p.errorMessage ?? 'Failed.');
+    }
   }
 
-  Future<void> _reactivate() async {
+  Future<void> _reactivate(BuildContext context, AdminUserProvider p) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Reactivate user?',
-      message:
-      '${_user!.fullName} will regain access to their account.',
+      message: 'The user will regain access to their account.',
       confirmLabel: 'Reactivate',
       icon: Icons.check_circle_outline_rounded,
     );
-    if (!confirmed || !mounted) return;
-    setState(() {
-      _user = _user!.copyWith(status: UserStatus.active);
-    });
-    AppSnackbar.showSuccess(context, 'User reactivated (mock).');
+    if (!confirmed || !context.mounted) return;
+    final ok = await p.reactivate(userId);
+    if (!context.mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'User reactivated.');
+    } else {
+      AppSnackbar.showError(context, p.errorMessage ?? 'Failed.');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = _user;
+    final p = context.watch<AdminUserProvider>();
+    final user = p.byId(userId);
+
     if (user == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('User not found')),
+        body: const AppEmptyState(
+          icon: Icons.person_off_outlined,
+          title: 'User not found',
+          message: 'This user is not available in the current list.',
+        ),
       );
     }
 
@@ -91,37 +82,28 @@ class _AdminUserDetailsPageState extends State<AdminUserDetailsPage> {
           children: [
             _header(user),
             const SizedBox(height: AppSpacing.lg),
-
             _sectionTitle('Account'),
             const SizedBox(height: AppSpacing.xs),
             _infoCard([
               _infoRow('Full name', user.fullName),
               _infoRow('Email', user.email),
-              _infoRow('Role', user.role.label),
-              _infoRow('Status', user.status.label),
+              _infoRow('Role', user.role),
+              _infoRow('Status', user.status),
               if (user.createdAt != null)
                 _infoRow('Joined', Formatters.date(user.createdAt)),
             ]),
-            const SizedBox(height: AppSpacing.lg),
-
-            _sectionTitle('Identifier'),
-            const SizedBox(height: AppSpacing.xs),
-            _infoCard([
-              _infoRow('User ID', user.id),
-            ]),
             const SizedBox(height: AppSpacing.xl),
-
-            if (user.status == UserStatus.active)
+            if (user.status == 'ACTIVE' || user.status == 'active')
               AppButton.danger(
                 label: 'Suspend User',
                 icon: Icons.block_outlined,
-                onPressed: _suspend,
+                onPressed: () => _suspend(context, p),
               )
-            else if (user.status == UserStatus.suspended)
+            else
               AppButton.primary(
                 label: 'Reactivate User',
                 icon: Icons.check_circle_outline_rounded,
-                onPressed: _reactivate,
+                onPressed: () => _reactivate(context, p),
               ),
           ],
         ),
@@ -129,7 +111,7 @@ class _AdminUserDetailsPageState extends State<AdminUserDetailsPage> {
     );
   }
 
-  Widget _header(MockUser user) {
+  Widget _header(user) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -164,19 +146,22 @@ class _AdminUserDetailsPageState extends State<AdminUserDetailsPage> {
     );
   }
 
-  Widget _statusChip(UserStatus status) {
-    switch (status) {
-      case UserStatus.active:
+  Widget _statusChip(String status) {
+    final upper = status.toUpperCase();
+    switch (upper) {
+      case 'ACTIVE':
         return const AppStatusChip(status: AppStatus.active);
-      case UserStatus.inactive:
+      case 'INACTIVE':
         return const AppStatusChip(status: AppStatus.inactive);
-      case UserStatus.suspended:
+      case 'SUSPENDED':
         return const AppStatusChip(status: AppStatus.suspended);
+      default:
+        return const AppStatusChip(status: AppStatus.inactive);
     }
   }
 
-  Widget _sectionTitle(String title) =>
-      Text(title, style: AppTextStyles.headingSmall);
+  Widget _sectionTitle(String t) =>
+      Text(t, style: AppTextStyles.headingSmall);
 
   Widget _infoCard(List<Widget> children) {
     return Container(
@@ -200,7 +185,6 @@ class _AdminUserDetailsPageState extends State<AdminUserDetailsPage> {
 
   Widget _infoRow(String label, String value) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           flex: 2,

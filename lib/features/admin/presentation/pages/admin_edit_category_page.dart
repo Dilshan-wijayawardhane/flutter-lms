@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -9,8 +10,7 @@ import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/mock_categories.dart';
-import '../../../../mock_data/models/mock_category.dart';
+import '../../../student/providers/category_provider.dart';
 
 class AdminEditCategoryPage extends StatefulWidget {
   const AdminEditCategoryPage({super.key, required this.categoryId});
@@ -22,22 +22,28 @@ class AdminEditCategoryPage extends StatefulWidget {
       _AdminEditCategoryPageState();
 }
 
-class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
+class _AdminEditCategoryPageState
+    extends State<AdminEditCategoryPage> {
   final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-
-  MockCategory? _category;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _descCtrl;
   bool _isActive = true;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _category = _find();
-    _nameCtrl.text = _category?.name ?? '';
-    _descCtrl.text = _category?.description ?? '';
-    _isActive = _category?.isActive ?? true;
+    final categories = context.read<CategoryProvider>().categories;
+    for (final c in categories) {
+      if (c.id == widget.categoryId) {
+        _nameCtrl = TextEditingController(text: c.name);
+        _descCtrl = TextEditingController(text: c.description ?? '');
+        _isActive = c.isActive;
+        return;
+      }
+    }
+    _nameCtrl = TextEditingController();
+    _descCtrl = TextEditingController();
   }
 
   @override
@@ -47,21 +53,22 @@ class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
     super.dispose();
   }
 
-  MockCategory? _find() {
-    for (final c in MockCategories.all) {
-      if (c.id == widget.categoryId) return c;
-    }
-    return null;
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final ok = await context.read<CategoryProvider>().update(
+      categoryId: widget.categoryId,
+      name: _nameCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Category updated (mock).');
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Category updated.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not update.');
+    }
   }
 
   Future<void> _toggleActive() async {
@@ -79,20 +86,19 @@ class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
           : Icons.toggle_on_outlined,
     );
     if (!confirmed || !mounted) return;
-    setState(() => _isActive = !_isActive);
-    AppSnackbar.showSuccess(context, '$action successful (mock).');
+    final ok = await context
+        .read<CategoryProvider>()
+        .setActive(widget.categoryId, !_isActive);
+    if (!mounted) return;
+    if (ok) setState(() => _isActive = !_isActive);
+    AppSnackbar.showSuccess(
+      context,
+      ok ? '$action successful.' : 'Could not update.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _category;
-    if (c == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Category not found')),
-      );
-    }
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Edit Category')),
@@ -103,7 +109,26 @@ class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              _statusCard(),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius:
+                  BorderRadius.circular(AppSpacing.radiusMd),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Text('Status',
+                        style: AppTextStyles.labelMedium),
+                    const Spacer(),
+                    if (_isActive)
+                      const AppStatusChip(status: AppStatus.active)
+                    else
+                      const AppStatusChip(status: AppStatus.inactive),
+                  ],
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
               AppTextField(
                 controller: _nameCtrl,
@@ -124,7 +149,7 @@ class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
                 label: 'Save Changes',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -137,27 +162,6 @@ class _AdminEditCategoryPageState extends State<AdminEditCategoryPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _statusCard() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Text('Status', style: AppTextStyles.labelMedium),
-          const Spacer(),
-          if (_isActive)
-            const AppStatusChip(status: AppStatus.active)
-          else
-            const AppStatusChip(status: AppStatus.inactive),
-        ],
       ),
     );
   }
