@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
+import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_users.dart';
+import '../../providers/profile_provider.dart';
 
 class StudentAccountPage extends StatelessWidget {
   const StudentAccountPage({super.key});
@@ -25,32 +28,44 @@ class StudentAccountPage extends StatelessWidget {
     if (!confirmed || !context.mounted) return;
     AppSnackbar.showInfo(
       context,
-      'Deactivate action will call the backend in Phase 2.',
+      'Deactivate action will call the backend in a later phase.',
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.studentProfile1;
-    final user = MockUsers.student1;
+    final provider = context.watch<ProfileProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Account Details')),
       body: SafeArea(
         top: false,
-        child: ListView(
+        child: provider.isLoading && !provider.hasProfile
+            ? const AppLoading(message: 'Loading account…')
+            : provider.profile == null
+            ? const AppEmptyState(
+          icon: Icons.badge_outlined,
+          title: 'No account data',
+          message: 'Your account details are not available yet.',
+        )
+            : ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
             _section('Account'),
-            _row('Full name', profile.fullName),
-            _row('Email', profile.email),
-            _row('Role', user.role.label),
-            _row('Status', user.status.label),
+            _row('Full name', provider.profile!.fullName),
+            _row('Email', provider.profile!.email),
+            _row('Role', provider.profile!.role),
+            _row('Status', provider.profile!.status),
+            _row(
+              'Email verified',
+              provider.profile!.isEmailVerified ? 'Yes' : 'No',
+            ),
             const SizedBox(height: AppSpacing.lg),
             _section('Security'),
             _row('Password', '••••••••',
-                trailing: 'Change in Change Password screen'),
+                trailing:
+                'Change in Change Password screen'),
             const SizedBox(height: AppSpacing.xl),
             AppButton.danger(
               label: 'Deactivate Account',
@@ -77,22 +92,16 @@ class StudentAccountPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: AppTextStyles.caption),
-                const SizedBox(height: 2),
-                Text(value, style: AppTextStyles.labelLarge),
-                if (trailing != null) ...[
-                  const SizedBox(height: 2),
-                  Text(trailing, style: AppTextStyles.caption),
-                ],
-              ],
-            ),
-          ),
+          Text(label, style: AppTextStyles.caption),
+          const SizedBox(height: 2),
+          Text(value, style: AppTextStyles.labelLarge),
+          if (trailing != null) ...[
+            const SizedBox(height: 2),
+            Text(trailing, style: AppTextStyles.caption),
+          ],
         ],
       ),
     );

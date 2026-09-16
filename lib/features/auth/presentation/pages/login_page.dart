@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../student/providers/profile_provider.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -10,6 +12,7 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 import '../widgets/role_selector.dart';
 
@@ -26,7 +29,6 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordCtrl = TextEditingController();
 
   MockRole _role = MockRole.student;
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -35,33 +37,54 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  String get _roleWireValue {
+    switch (_role) {
+      case MockRole.student:
+        return 'STUDENT';
+      case MockRole.instructor:
+        return 'INSTRUCTOR';
+      case MockRole.admin:
+        return 'ADMIN';
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
-    // Mock authentication — no real API call.
-    await Future.delayed(const Duration(milliseconds: 700));
+    final auth = context.read<AuthProvider>();
+    auth.clearError();
+
+    final ok = await auth.login(
+      email: _emailCtrl.text.trim(),
+      password: _passwordCtrl.text,
+      role: _roleWireValue,
+    );
+
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
-    AppSnackbar.showSuccess(context, 'Signed in as ${_role.label}');
-
-    switch (_role) {
-      case MockRole.student:
-        Navigator.of(context).pushReplacementNamed(
-          AppRoutes.studentDashboard,
-        );
-        break;
-      case MockRole.instructor:
-        Navigator.of(context).pushReplacementNamed(
-          AppRoutes.instructorDashboard,
-        );
-        break;
-      case MockRole.admin:
-        Navigator.of(context).pushReplacementNamed(
-          AppRoutes.adminDashboard,
-        );
-        break;
+    if (ok) {
+      // Kick off the profile load so the dashboard/profile screens have data.
+      context.read<ProfileProvider>().load(force: true);
+      AppSnackbar.showSuccess(context, 'Signed in successfully');
+      switch (_role) {
+        case MockRole.student:
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.studentDashboard);
+          break;
+        case MockRole.instructor:
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.instructorDashboard);
+          break;
+        case MockRole.admin:
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.adminDashboard);
+          break;
+      }
+    } else {
+      AppSnackbar.showError(
+        context,
+        auth.errorMessage ?? 'Sign in failed. Please try again.',
+      );
     }
   }
 
@@ -74,13 +97,18 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.of(context).pushNamed(AppRoutes.registerInstructor);
         break;
       case MockRole.admin:
-        AppSnackbar.showInfo(context, 'Admin accounts are created by invite.');
+        AppSnackbar.showInfo(
+          context,
+          'Admin accounts are created by invite.',
+        );
         break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: SafeArea(
@@ -127,9 +155,8 @@ class _LoginPageState extends State<LoginPage> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () => Navigator.of(context).pushNamed(
-                      AppRoutes.forgotPassword,
-                    ),
+                    onPressed: () => Navigator.of(context)
+                        .pushNamed(AppRoutes.forgotPassword),
                     child: const Text(AppStrings.forgotPassword),
                   ),
                 ),
@@ -137,8 +164,8 @@ class _LoginPageState extends State<LoginPage> {
 
                 AppButton.primary(
                   label: 'Sign In',
-                  isLoading: _isLoading,
-                  onPressed: _submit,
+                  isLoading: isLoading,
+                  onPressed: isLoading ? null : _submit,
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
@@ -154,33 +181,6 @@ class _LoginPageState extends State<LoginPage> {
                       child: const Text('Register'),
                     ),
                   ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySurface,
-                    borderRadius:
-                    BorderRadius.circular(AppSpacing.radiusSm),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        size: 18,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      Expanded(
-                        child: Text(
-                          'Demo mode: any valid email + password signs in '
-                              'with the selected role.',
-                          style: AppTextStyles.caption,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),

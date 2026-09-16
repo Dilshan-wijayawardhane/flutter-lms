@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -6,10 +7,31 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
-import '../../../../mock_data/mock_users.dart';
+import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../providers/profile_provider.dart';
 
-class StudentProfilePage extends StatelessWidget {
+class StudentProfilePage extends StatefulWidget {
   const StudentProfilePage({super.key});
+
+  @override
+  State<StudentProfilePage> createState() => _StudentProfilePageState();
+}
+
+class _StudentProfilePageState extends State<StudentProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    // Load once on first build if we don't already have data.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<ProfileProvider>();
+      if (!p.hasProfile && !p.isLoading) {
+        p.load();
+      }
+    });
+  }
 
   Future<void> _logout(BuildContext context) async {
     final confirmed = await AppConfirmationDialog.show(
@@ -21,6 +43,9 @@ class StudentProfilePage extends StatelessWidget {
       icon: Icons.logout_rounded,
     );
     if (!confirmed || !context.mounted) return;
+    await context.read<AuthProvider>().logout();
+    if (!context.mounted) return;
+    context.read<ProfileProvider>().clear();
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.login,
           (_) => false,
@@ -29,85 +54,119 @@ class StudentProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.studentProfile1;
+    final provider = context.watch<ProfileProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Profile'),
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Refresh',
+            onPressed: provider.isLoading
+                ? null
+                : () => provider.load(force: true),
+          ),
+        ],
       ),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _headerCard(context, profile),
-            const SizedBox(height: AppSpacing.lg),
-            _group('Account', [
-              _item(
-                context,
-                icon: Icons.person_outline_rounded,
-                label: 'Edit profile',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.studentEditProfile),
-              ),
-              _item(
-                context,
-                icon: Icons.badge_outlined,
-                label: 'Account details',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.studentAccount),
-              ),
-              _item(
-                context,
-                icon: Icons.lock_outline_rounded,
-                label: 'Change password',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.studentChangePassword),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.md),
-            _group('Activity', [
-              _item(
-                context,
-                icon: Icons.rate_review_outlined,
-                label: 'My reviews',
-                onTap: () =>
-                    Navigator.of(context).pushNamed(AppRoutes.studentReviews),
-              ),
-              _item(
-                context,
-                icon: Icons.assignment_outlined,
-                label: 'Assignments',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.studentAssignments),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.md),
-            _group('Danger zone', [
-              _item(
-                context,
-                icon: Icons.logout_rounded,
-                label: 'Log out',
-                color: AppColors.danger,
-                onTap: () => _logout(context),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.lg),
-            Center(
-              child: Text(
-                'Version 0.1.0 · Phase 1 (UI only)',
-                style: AppTextStyles.caption,
-              ),
-            ),
-          ],
-        ),
+        child: _buildBody(provider),
       ),
     );
   }
 
-  Widget _headerCard(BuildContext context, profile) {
+  Widget _buildBody(ProfileProvider provider) {
+    if (provider.isLoading && !provider.hasProfile) {
+      return const AppLoading(message: 'Loading your profile…');
+    }
+
+    if (provider.hasError && !provider.hasProfile) {
+      return AppErrorState(
+        title: 'Could not load profile',
+        message: provider.errorMessage ?? 'Please try again.',
+        onRetry: () => provider.load(force: true),
+      );
+    }
+
+    final profile = provider.profile;
+    if (profile == null) {
+      return const AppEmptyState(
+        icon: Icons.person_outline_rounded,
+        title: 'No profile yet',
+        message: 'Your profile is not available at the moment.',
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        _headerCard(profile),
+        const SizedBox(height: AppSpacing.lg),
+        _group('Account', [
+          _item(
+            context,
+            icon: Icons.person_outline_rounded,
+            label: 'Edit profile',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.studentEditProfile),
+          ),
+          _item(
+            context,
+            icon: Icons.badge_outlined,
+            label: 'Account details',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.studentAccount),
+          ),
+          _item(
+            context,
+            icon: Icons.lock_outline_rounded,
+            label: 'Change password',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.studentChangePassword),
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _group('Activity', [
+          _item(
+            context,
+            icon: Icons.rate_review_outlined,
+            label: 'My reviews',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.studentReviews),
+          ),
+          _item(
+            context,
+            icon: Icons.assignment_outlined,
+            label: 'Assignments',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.studentAssignments),
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _group('Danger zone', [
+          _item(
+            context,
+            icon: Icons.logout_rounded,
+            label: 'Log out',
+            color: AppColors.danger,
+            onTap: () => _logout(context),
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.lg),
+        Center(
+          child: Text(
+            'Version 0.3.0 · Phase 3',
+            style: AppTextStyles.caption,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerCard(profile) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -128,11 +187,21 @@ class StudentProfilePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(profile.fullName,
-                    style: AppTextStyles.headingSmall),
+                Text(
+                  profile.fullName,
+                  style: AppTextStyles.headingSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 2),
-                Text(profile.email, style: AppTextStyles.caption),
-                if (profile.educationLevel != null) ...[
+                Text(
+                  profile.email,
+                  style: AppTextStyles.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (profile.educationLevel != null &&
+                    profile.educationLevel!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(

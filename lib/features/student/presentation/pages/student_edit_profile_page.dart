@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/image_picker_field.dart';
-import '../../../../mock_data/mock_users.dart';
+import '../../providers/profile_provider.dart';
 
 class StudentEditProfilePage extends StatefulWidget {
   const StudentEditProfilePage({super.key});
@@ -18,7 +18,8 @@ class StudentEditProfilePage extends StatefulWidget {
       _StudentEditProfilePageState();
 }
 
-class _StudentEditProfilePageState extends State<StudentEditProfilePage> {
+class _StudentEditProfilePageState
+    extends State<StudentEditProfilePage> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
@@ -27,18 +28,18 @@ class _StudentEditProfilePageState extends State<StudentEditProfilePage> {
   late final TextEditingController _bioCtrl;
   late final TextEditingController _interestsCtrl;
 
-  bool _saving = false;
-
   @override
   void initState() {
     super.initState();
-    final p = MockUsers.studentProfile1;
-    _nameCtrl = TextEditingController(text: p.fullName);
-    _phoneCtrl = TextEditingController(text: p.phone ?? '');
-    _countryCtrl = TextEditingController(text: p.country ?? '');
-    _educationCtrl = TextEditingController(text: p.educationLevel ?? '');
-    _bioCtrl = TextEditingController(text: p.bio ?? '');
-    _interestsCtrl = TextEditingController(text: p.interests.join(', '));
+    final p = context.read<ProfileProvider>().profile;
+    _nameCtrl = TextEditingController(text: p?.fullName ?? '');
+    _phoneCtrl = TextEditingController(text: p?.phone ?? '');
+    _countryCtrl = TextEditingController(text: p?.country ?? '');
+    _educationCtrl =
+        TextEditingController(text: p?.educationLevel ?? '');
+    _bioCtrl = TextEditingController(text: p?.bio ?? '');
+    _interestsCtrl =
+        TextEditingController(text: (p?.interests ?? []).join(', '));
   }
 
   @override
@@ -54,11 +55,33 @@ class _StudentEditProfilePageState extends State<StudentEditProfilePage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-    setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Profile saved (mock).');
+
+    final provider = context.read<ProfileProvider>();
+    final current = provider.profile;
+    if (current == null) {
+      AppSnackbar.showError(context, 'Profile not loaded yet.');
+      return;
+    }
+
+    // Local update only — Phase 3b wires the real PUT/PATCH.
+    final updated = current.copyWith(
+      fullName: _nameCtrl.text.trim(),
+      phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+      country:
+      _countryCtrl.text.trim().isEmpty ? null : _countryCtrl.text.trim(),
+      educationLevel: _educationCtrl.text.trim().isEmpty
+          ? null
+          : _educationCtrl.text.trim(),
+      bio: _bioCtrl.text.trim().isEmpty ? null : _bioCtrl.text.trim(),
+      interests: _interestsCtrl.text
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(),
+    );
+
+    provider.applyLocalUpdate(updated);
+    AppSnackbar.showSuccess(context, 'Profile saved locally');
     Navigator.of(context).pop();
   }
 
@@ -75,10 +98,12 @@ class _StudentEditProfilePageState extends State<StudentEditProfilePage> {
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               ImagePickerField(
+                imageUrl:
+                context.watch<ProfileProvider>().profile?.profileImageUrl,
                 label: 'Change profile picture',
                 onPickRequested: () => AppSnackbar.showInfo(
                   context,
-                  'Image picker arrives with backend integration.',
+                  'Image picker + upload arrive with the upload phase.',
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -126,7 +151,6 @@ class _StudentEditProfilePageState extends State<StudentEditProfilePage> {
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save Changes',
-                isLoading: _saving,
                 onPressed: _save,
               ),
             ],
