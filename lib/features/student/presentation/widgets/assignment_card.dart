@@ -5,11 +5,9 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_assignment.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../data/models/assignment.dart' as api;
+import '../../data/models/submission.dart';
 
-/// Assignment row used on the student assignments list.
-/// Displays assignment title, course, due date, and submission status.
 class AssignmentCard extends StatelessWidget {
   const AssignmentCard({
     super.key,
@@ -18,8 +16,8 @@ class AssignmentCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockAssignment assignment;
-  final MockSubmission? submission;
+  final api.Assignment assignment;
+  final Submission? submission;
   final VoidCallback? onTap;
 
   @override
@@ -90,16 +88,11 @@ class AssignmentCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
-                  Icon(
-                    Icons.emoji_events_outlined,
-                    size: 14,
-                    color: AppColors.textTertiary,
-                  ),
+                  Icon(Icons.emoji_events_outlined,
+                      size: 14, color: AppColors.textTertiary),
                   const SizedBox(width: 4),
-                  Text(
-                    '${assignment.maxPoints} pts',
-                    style: AppTextStyles.caption,
-                  ),
+                  Text('${assignment.maxPoints} pts',
+                      style: AppTextStyles.caption),
                 ],
               ),
               if (submission?.score != null &&

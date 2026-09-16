@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -8,9 +9,7 @@ import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/file_picker_field.dart';
 import '../../../../core/widgets/selected_file_card.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/models/mock_assignment.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../providers/assignment_provider.dart';
 
 class StudentAssignmentSubmissionPage extends StatefulWidget {
   const StudentAssignmentSubmissionPage({
@@ -30,25 +29,22 @@ class _StudentAssignmentSubmissionPageState
   final _formKey = GlobalKey<FormState>();
   final _textCtrl = TextEditingController();
 
-  // Mock "selected" file — in Phase 2, this becomes a real picked file.
+  // Phase 5 keeps the existing "fake pick" UI. Real file_picker + Dio
+  // multipart wiring lands in Phase 7.
   String? _fileName;
   String? _fileSize;
-  bool _isSubmitting = false;
+  String? _filePath;
+  String? _mimeType;
 
-  MockAssignment? _assignment;
+  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
-    _assignment = _find(widget.assignmentId);
-    final existing = MockSubmissions.byStudentAndAssignment(
-      'user_student_001',
-      widget.assignmentId,
-    );
-    if (existing != null) {
-      _textCtrl.text = existing.textContent ?? '';
-      _fileName = existing.fileName;
-    }
+    final provider = context.read<AssignmentProvider>();
+    final existing = provider.submissionFor(widget.assignmentId);
+    _textCtrl.text = existing?.textContent ?? '';
+    _fileName = existing?.fileName;
   }
 
   @override
@@ -57,25 +53,23 @@ class _StudentAssignmentSubmissionPageState
     super.dispose();
   }
 
-  MockAssignment? _find(String id) {
-    for (final a in MockAssignments.all) {
-      if (a.id == id) return a;
-    }
-    return null;
-  }
-
   void _fakePickFile() {
-    // Phase 1: no real file picker. We set a mock selection so the UI can
-    // demonstrate the selected-file state.
     setState(() {
-      _fileName = 'my_submission_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      _fileName =
+      'submission_${DateTime.now().millisecondsSinceEpoch}.pdf';
       _fileSize = '1.2MB';
+      _filePath = null; // Phase 7 wires real path
+      _mimeType = 'application/pdf';
     });
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_textCtrl.text.trim().isEmpty && _fileName == null) {
+
+    final hasText = _textCtrl.text.trim().isNotEmpty;
+    final hasFile = _fileName != null;
+
+    if (!hasText && !hasFile) {
       AppSnackbar.showError(
         context,
         'Please provide text or attach a file.',
@@ -83,37 +77,49 @@ class _StudentAssignmentSubmissionPageState
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
+    setState(() => _submitting = true);
+    final provider = context.read<AssignmentProvider>();
 
-    AppSnackbar.showSuccess(context, 'Submission saved (mock).');
-    Navigator.of(context).pop();
+    dynamic submission;
+
+    // Prefer real file upload when a path is available; otherwise text.
+    if (hasFile && _filePath != null) {
+      submission = await provider.submitFile(
+        assignmentId: widget.assignmentId,
+        filePath: _filePath!,
+        fileName: _fileName!,
+        mimeType: _mimeType,
+      );
+    } else if (hasText) {
+      submission = await provider.submitText(
+        assignmentId: widget.assignmentId,
+        text: _textCtrl.text.trim(),
+      );
+    }
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    if (submission != null) {
+      AppSnackbar.showSuccess(context, 'Submission saved.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        provider.detailErrorFor(widget.assignmentId) ??
+            'Could not submit. Please try again.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final a = _assignment;
-    if (a == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Assignment not found')),
-      );
-    }
-
-    final existing = MockSubmissions.byStudentAndAssignment(
-      'user_student_001',
-      a.id,
-    );
-    final isResubmission =
-        existing?.status == SubmissionStatus.resubmissionRequired;
+    final provider = context.watch<AssignmentProvider>();
+    final assignment = provider.assignmentById(widget.assignmentId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(isResubmission ? 'Resubmit' : 'Submit Assignment'),
-      ),
+      appBar: AppBar(title: const Text('Submit Assignment')),
       body: SafeArea(
         top: false,
         child: Form(
@@ -121,24 +127,42 @@ class _StudentAssignmentSubmissionPageState
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              _assignmentSummary(a),
-              const SizedBox(height: AppSpacing.lg),
-
-              if (a.allowTextSubmission) ...[
+              if (assignment != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius:
+                    BorderRadius.circular(AppSpacing.radiusMd),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(assignment.title,
+                          style: AppTextStyles.labelLarge),
+                      const SizedBox(height: 2),
+                      Text(assignment.courseName,
+                          style: AppTextStyles.caption),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+              if (assignment?.allowTextSubmission != false) ...[
                 Text('Text submission',
                     style: AppTextStyles.headingSmall),
                 const SizedBox(height: AppSpacing.xs),
                 AppTextField(
                   controller: _textCtrl,
                   hint:
-                  'Type your answer, paste a link, or describe your submission...',
+                  'Type your answer, paste a link, or describe your submission…',
                   maxLines: 6,
                   minLines: 4,
                 ),
                 const SizedBox(height: AppSpacing.lg),
               ],
-
-              if (a.allowFileSubmission) ...[
+              if (assignment?.allowFileSubmission != false) ...[
                 Text('File submission',
                     style: AppTextStyles.headingSmall),
                 const SizedBox(height: AppSpacing.xs),
@@ -154,40 +178,21 @@ class _StudentAssignmentSubmissionPageState
                     onRemove: () => setState(() {
                       _fileName = null;
                       _fileSize = null;
+                      _filePath = null;
                     }),
                   ),
                 const SizedBox(height: AppSpacing.lg),
               ],
-
               AppButton.primary(
-                label: isResubmission ? 'Resubmit' : 'Submit',
+                label: 'Submit',
                 icon: Icons.upload_rounded,
-                isLoading: _isSubmitting,
-                onPressed: _submit,
+                isLoading: _submitting,
+                onPressed: _submitting ? null : _submit,
               ),
               const SizedBox(height: AppSpacing.md),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _assignmentSummary(MockAssignment a) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(a.title, style: AppTextStyles.labelLarge),
-          const SizedBox(height: 2),
-          Text(a.courseName, style: AppTextStyles.caption),
-        ],
       ),
     );
   }

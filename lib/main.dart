@@ -5,7 +5,16 @@ import 'core/routes/app_router.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/student/providers/assignment_provider.dart';
+import 'features/student/providers/category_provider.dart';
+import 'features/student/providers/course_provider.dart';
+import 'features/student/providers/enrollment_provider.dart';
+import 'features/student/providers/learning_provider.dart';
+import 'features/student/providers/lesson_provider.dart';
+import 'features/student/providers/notification_provider.dart';
 import 'features/student/providers/profile_provider.dart';
+import 'features/student/providers/quiz_provider.dart';
+import 'features/student/providers/review_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,9 +31,16 @@ class FlutterLmsApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AuthProvider()..restoreSession(),
         ),
-        ChangeNotifierProvider(
-          create: (_) => ProfileProvider(),
-        ),
+        ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        ChangeNotifierProvider(create: (_) => CourseProvider()),
+        ChangeNotifierProvider(create: (_) => EnrollmentProvider()),
+        ChangeNotifierProvider(create: (_) => LearningProvider()),
+        ChangeNotifierProvider(create: (_) => LessonProvider()),
+        ChangeNotifierProvider(create: (_) => QuizProvider()),
+        ChangeNotifierProvider(create: (_) => AssignmentProvider()),
+        ChangeNotifierProvider(create: (_) => ReviewProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: MaterialApp(
         title: 'Flutter LMS',
