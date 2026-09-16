@@ -4,10 +4,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../data/models/course.dart' as api;
 
-/// Compact list-style course card. Shows thumbnail, title, instructor,
-/// rating, learners, and optional progress bar for enrolled courses.
+/// Accepts the API Course model.
 class CourseCard extends StatelessWidget {
   const CourseCard({
     super.key,
@@ -17,7 +16,7 @@ class CourseCard extends StatelessWidget {
     this.compact = false,
   });
 
-  final MockCourse course;
+  final api.Course course;
   final VoidCallback? onTap;
   final bool showProgress;
   final bool compact;
@@ -52,9 +51,38 @@ class CourseCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    _instructorRow(),
+                    Row(
+                      children: [
+                        AppAvatar(name: course.instructorName, size: 20),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            course.instructorName,
+                            style: AppTextStyles.caption,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 6),
-                    _metaRow(),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            size: 14, color: AppColors.star),
+                        const SizedBox(width: 2),
+                        Text(course.rating.toStringAsFixed(1),
+                            style: AppTextStyles.labelSmall),
+                        const SizedBox(width: 2),
+                        Text('(${course.ratingCount})',
+                            style: AppTextStyles.caption),
+                        const SizedBox(width: AppSpacing.sm),
+                        const Icon(Icons.people_alt_outlined,
+                            size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 2),
+                        Text(_learnerLabel, style: AppTextStyles.caption),
+                      ],
+                    ),
                     if (showProgress) ...[
                       const SizedBox(height: AppSpacing.xs),
                       _progressBar(),
@@ -81,69 +109,23 @@ class CourseCard extends StatelessWidget {
             ? Image.network(
           course.thumbnailUrl!,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _thumbnailPlaceholder(),
+          errorBuilder: (_, __, ___) => _placeholder(),
         )
-            : _thumbnailPlaceholder(),
+            : _placeholder(),
       ),
     );
   }
 
-  Widget _thumbnailPlaceholder() {
-    return Container(
-      color: AppColors.primarySurface,
-      child: const Center(
-        child: Icon(
-          Icons.play_circle_outline_rounded,
-          size: 32,
-          color: AppColors.primary,
-        ),
+  Widget _placeholder() => Container(
+    color: AppColors.primarySurface,
+    child: const Center(
+      child: Icon(
+        Icons.play_circle_outline_rounded,
+        size: 32,
+        color: AppColors.primary,
       ),
-    );
-  }
-
-  Widget _instructorRow() {
-    return Row(
-      children: [
-        AppAvatar(
-          name: course.instructorName,
-          size: 20,
-        ),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            course.instructorName,
-            style: AppTextStyles.caption,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _metaRow() {
-    return Row(
-      children: [
-        const Icon(Icons.star_rounded,
-            size: 14, color: AppColors.star),
-        const SizedBox(width: 2),
-        Text(
-          course.rating.toStringAsFixed(1),
-          style: AppTextStyles.labelSmall,
-        ),
-        const SizedBox(width: 2),
-        Text(
-          '(${course.ratingCount})',
-          style: AppTextStyles.caption,
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        const Icon(Icons.people_alt_outlined,
-            size: 14, color: AppColors.textTertiary),
-        const SizedBox(width: 2),
-        Text(_learnerLabel, style: AppTextStyles.caption),
-      ],
-    );
-  }
+    ),
+  );
 
   String get _learnerLabel {
     final n = course.learnerCount;
@@ -154,32 +136,23 @@ class CourseCard extends StatelessWidget {
 
   Widget _progressBar() {
     final value = (course.progressPercent / 100).clamp(0.0, 1.0);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius:
-                BorderRadius.circular(AppSpacing.radiusPill),
-                child: LinearProgressIndicator(
-                  value: value,
-                  minHeight: 6,
-                  backgroundColor: AppColors.surfaceVariant,
-                  valueColor: const AlwaysStoppedAnimation(
-                    AppColors.primary,
-                  ),
-                ),
-              ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+            child: LinearProgressIndicator(
+              value: value,
+              minHeight: 6,
+              backgroundColor: AppColors.surfaceVariant,
+              valueColor:
+              const AlwaysStoppedAnimation(AppColors.primary),
             ),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              '${course.progressPercent}%',
-              style: AppTextStyles.labelSmall,
-            ),
-          ],
+          ),
         ),
+        const SizedBox(width: AppSpacing.xs),
+        Text('${course.progressPercent}%',
+            style: AppTextStyles.labelSmall),
       ],
     );
   }

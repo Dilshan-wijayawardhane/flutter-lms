@@ -1,52 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/mock_notifications.dart';
-import '../../../../mock_data/mock_stats.dart';
-import '../../../../mock_data/mock_users.dart';
-import '../../../../mock_data/models/mock_course.dart';
-import '../../../../mock_data/models/mock_notification.dart';
+import '../../data/models/course.dart' as api;
+import '../../data/models/enrollment.dart';
+import '../../providers/course_provider.dart' hide LoadState;
+import '../../providers/enrollment_provider.dart' hide LoadState;
+import '../../providers/profile_provider.dart';
 import '../widgets/course_card.dart';
 import '../widgets/dashboard_section.dart';
 import '../widgets/progress_card.dart';
 import '../widgets/stat_tile.dart';
 
-class StudentDashboardPage extends StatelessWidget {
+class StudentDashboardPage extends StatefulWidget {
   const StudentDashboardPage({super.key});
 
   @override
+  State<StudentDashboardPage> createState() =>
+      _StudentDashboardPageState();
+}
+
+class _StudentDashboardPageState extends State<StudentDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final profile = context.read<ProfileProvider>();
+      if (!profile.hasProfile) profile.load();
+
+      final enroll = context.read<EnrollmentProvider>();
+      if (enroll.state != LoadState.success) enroll.load();
+
+      final courses = context.read<CourseProvider>();
+      if (courses.browseState != LoadState.success) courses.browse();
+    });
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      context.read<ProfileProvider>().load(force: true),
+      context.read<EnrollmentProvider>().load(force: true),
+      context.read<CourseProvider>().browse(force: true),
+    ]);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.studentProfile1;
-    final stats = MockStats.student;
-    final enrolled = MockCourses.studentEnrolled;
-    final current = enrolled.isNotEmpty ? enrolled.first : null;
-    final recommended = MockCourses.published
-        .where((c) => !c.isEnrolled)
+    final profileProv = context.watch<ProfileProvider>();
+    final enrollProv = context.watch<EnrollmentProvider>();
+    final courseProv = context.watch<CourseProvider>();
+
+    final name = profileProv.profile?.fullName ?? 'Student';
+    final enrollments = enrollProv.enrollments;
+
+    Enrollment? current;
+    for (final e in enrollments) {
+      if (e.status == EnrollmentStatus.active && e.progressPercent < 100) {
+        current = e;
+        break;
+      }
+    }
+
+    final enrolledIds = enrollments.map((e) => e.courseId).toSet();
+    final recommended = courseProv.courses
+        .where((c) => !enrolledIds.contains(c.id) && !c.isEnrolled)
         .take(4)
         .toList();
-    final upcomingAssignments =
-    MockAssignments.published.take(3).toList();
-    final notifications = MockNotifications.student1.take(3).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            await Future.delayed(const Duration(milliseconds: 600));
-          },
+          onRefresh: _refresh,
           child: ListView(
             padding: const EdgeInsets.only(bottom: AppSpacing.xl),
             children: [
-              _greeting(profile.fullName),
+              _greeting(name),
               const SizedBox(height: AppSpacing.md),
-              _statsGrid(stats),
+              _statsGrid(enrollments),
               if (current != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
@@ -56,43 +92,44 @@ class StudentDashboardPage extends StatelessWidget {
                     0,
                   ),
                   child: ProgressCard(
-                    courseTitle: current.title,
+                    courseTitle: current.courseName,
                     lessonTitle: 'Continue where you left off',
                     progressPercent: current.progressPercent,
                     onContinue: () => Navigator.of(context).pushNamed(
                       AppRoutes.studentLearning,
-                      arguments: current.id,
+                      arguments: current!.courseId,
                     ),
                   ),
                 ),
               DashboardSection(
                 title: 'My Courses',
                 actionLabel: 'See all',
-                onActionTap: () {
-                  Navigator.of(context)
-                      .pushNamed(AppRoutes.studentMyCourses);
-                },
-                child: SizedBox(
+                onActionTap: () => Navigator.of(context)
+                    .pushNamed(AppRoutes.studentMyCourses),
+                child: enrollments.isEmpty
+                    ? const _EmptyRow(text: 'No enrollments yet')
+                    : SizedBox(
                   height: 190,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.md,
                     ),
-                    itemCount: enrolled.length,
+                    itemCount: enrollments.length,
                     separatorBuilder: (_, __) =>
                     const SizedBox(width: AppSpacing.sm),
                     itemBuilder: (_, i) {
-                      final c = enrolled[i];
+                      final e = enrollments[i];
                       return SizedBox(
                         width: 260,
                         child: CourseCard(
-                          course: c,
+                          course: _toApiCourse(e),
                           showProgress: true,
-                          onTap: () => Navigator.of(context).pushNamed(
-                            AppRoutes.studentCourseDetails,
-                            arguments: c.id,
-                          ),
+                          onTap: () =>
+                              Navigator.of(context).pushNamed(
+                                AppRoutes.studentLearning,
+                                arguments: e.courseId,
+                              ),
                         ),
                       );
                     },
@@ -100,60 +137,14 @@ class StudentDashboardPage extends StatelessWidget {
                 ),
               ),
               DashboardSection(
-                title: 'Upcoming Assignments',
-                actionLabel: 'See all',
-                onActionTap: () {
-                  Navigator.of(context)
-                      .pushNamed(AppRoutes.studentAssignments);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  child: Column(
-                    children: upcomingAssignments
-                        .map((a) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: _assignmentRow(context, a.title,
-                          a.courseName),
-                    ))
-                        .toList(),
-                  ),
-                ),
-              ),
-              DashboardSection(
-                title: 'Recent Notifications',
-                actionLabel: 'See all',
-                onActionTap: () {
-                  Navigator.of(context)
-                      .pushNamed(AppRoutes.studentNotifications);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  child: Column(
-                    children: notifications
-                        .map((n) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: _notificationRow(context, n),
-                    ))
-                        .toList(),
-                  ),
-                ),
-              ),
-              DashboardSection(
                 title: 'Recommended Courses',
                 actionLabel: 'See all',
-                onActionTap: () {
-                  Navigator.of(context)
-                      .pushNamed(AppRoutes.studentCourses);
-                },
-                child: Padding(
+                onActionTap: () => Navigator.of(context)
+                    .pushNamed(AppRoutes.studentCourses),
+                child: recommended.isEmpty
+                    ? const _EmptyRow(
+                    text: 'No recommendations available')
+                    : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
                   ),
@@ -180,6 +171,26 @@ class StudentDashboardPage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Adapter: turns an Enrollment into a Course so we can reuse CourseCard
+  /// without a second network round-trip.
+  api.Course _toApiCourse(Enrollment e) {
+    return api.Course(
+      id: e.courseId,
+      title: e.courseName,
+      description: '',
+      instructorId: '',
+      instructorName: e.instructorName ?? '',
+      categoryId: '',
+      categoryName: '',
+      status: api.CourseStatus.published,
+      level: api.CourseLevel.beginner,
+      thumbnailUrl: e.courseThumbnailUrl,
+      progressPercent: e.progressPercent,
+      lessonCount: e.totalLessonCount,
+      isEnrolled: true,
     );
   }
 
@@ -215,40 +226,52 @@ class StudentDashboardPage extends StatelessWidget {
               ],
             ),
           ),
-          AppAvatar(
-            name: name,
-            size: AppSpacing.avatarMd,
-          ),
+          AppAvatar(name: name, size: AppSpacing.avatarMd),
         ],
       ),
     );
   }
 
-  Widget _statsGrid(stats) {
+  Widget _statsGrid(List<Enrollment> enrollments) {
+    final total = enrollments.length;
+    final inProgress = enrollments
+        .where((e) => e.status == EnrollmentStatus.active)
+        .length;
+    final completed = enrollments
+        .where((e) => e.status == EnrollmentStatus.completed)
+        .length;
+    final avgProgress = enrollments.isEmpty
+        ? 0
+        : (enrollments
+        .map((e) => e.progressPercent)
+        .reduce((a, b) => a + b) /
+        enrollments.length)
+        .round();
+
     final tiles = [
       StatTile(
         label: 'Enrolled',
-        value: '${stats.enrolledCourses}',
+        value: '$total',
         icon: Icons.menu_book_outlined,
         color: AppColors.primary,
       ),
       StatTile(
         label: 'In Progress',
-        value: '${stats.inProgressCourses}',
+        value: '$inProgress',
         icon: Icons.timelapse_rounded,
         color: AppColors.info,
       ),
       StatTile(
-        label: 'Pending',
-        value: '${stats.pendingAssignments}',
-        icon: Icons.assignment_outlined,
-        color: AppColors.warning,
+        label: 'Completed',
+        value: '$completed',
+        icon: Icons.verified_outlined,
+        color: AppColors.success,
       ),
       StatTile(
         label: 'Avg. Progress',
-        value: '${stats.averageProgressPercent}%',
+        value: '$avgProgress%',
         icon: Icons.trending_up_rounded,
-        color: AppColors.success,
+        color: AppColors.warning,
       ),
     ];
 
@@ -265,125 +288,20 @@ class StudentDashboardPage extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _assignmentRow(
-      BuildContext context,
-      String title,
-      String course,
-      ) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
+class _EmptyRow extends StatelessWidget {
+  const _EmptyRow({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md,
       ),
-      child: Row(
-        children: [
-          Container(
-            height: 40,
-            width: 40,
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: const Icon(
-              Icons.assignment_outlined,
-              color: AppColors.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.labelLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(course, style: AppTextStyles.caption,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: Text(text, style: AppTextStyles.caption),
     );
-  }
-
-  Widget _notificationRow(BuildContext context, MockNotification n) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(
-          color: n.isRead ? AppColors.border : AppColors.primaryLight,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 36,
-            width: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: Icon(
-              _notifIcon(n.type),
-              color: AppColors.primary,
-              size: 18,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(n.title, style: AppTextStyles.labelLarge),
-                const SizedBox(height: 2),
-                Text(
-                  n.message,
-                  style: AppTextStyles.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          if (!n.isRead)
-            Container(
-              height: 8,
-              width: 8,
-              margin: const EdgeInsets.only(top: 4, left: 4),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  IconData _notifIcon(NotificationType type) {
-    switch (type) {
-      case NotificationType.course:
-        return Icons.menu_book_outlined;
-      case NotificationType.assignment:
-        return Icons.assignment_outlined;
-      case NotificationType.quiz:
-        return Icons.quiz_outlined;
-      case NotificationType.enrollment:
-        return Icons.how_to_reg_outlined;
-      case NotificationType.system:
-        return Icons.info_outline_rounded;
-    }
   }
 }

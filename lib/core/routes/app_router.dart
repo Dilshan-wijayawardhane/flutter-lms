@@ -3,11 +3,6 @@ import 'package:flutter/material.dart';
 // ============================================================
 // AUTH
 // ============================================================
-import '../../features/admin/presentation/pages/admin_account_page.dart';
-import '../../features/admin/presentation/pages/admin_change_password_page.dart';
-import '../../features/admin/presentation/pages/admin_enrollments_page.dart';
-import '../../features/admin/presentation/pages/admin_profile_page.dart';
-import '../../features/admin/presentation/pages/admin_reviews_page.dart';
 import '../../features/auth/presentation/pages/forgot_password_page.dart';
 import '../../features/auth/presentation/pages/instructor_register_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
@@ -75,14 +70,19 @@ import '../../features/instructor/presentation/pages/instructor_submissions_page
 // ADMIN
 // ============================================================
 import '../../features/admin/presentation/admin_shell.dart';
+import '../../features/admin/presentation/pages/admin_account_page.dart';
 import '../../features/admin/presentation/pages/admin_categories_page.dart';
+import '../../features/admin/presentation/pages/admin_change_password_page.dart';
 import '../../features/admin/presentation/pages/admin_course_details_page.dart';
 import '../../features/admin/presentation/pages/admin_course_filter_page.dart';
-import '../../features/admin/presentation/pages/admin_create_category_page.dart';
-import '../../features/admin/presentation/pages/admin_edit_category_page.dart';
 import '../../features/admin/presentation/pages/admin_courses_page.dart'
     show AdminCourseFilterArgs, AdminCoursesPage;
+import '../../features/admin/presentation/pages/admin_create_category_page.dart';
+import '../../features/admin/presentation/pages/admin_edit_category_page.dart';
 import '../../features/admin/presentation/pages/admin_enrollment_details_page.dart';
+import '../../features/admin/presentation/pages/admin_enrollments_page.dart';
+import '../../features/admin/presentation/pages/admin_profile_page.dart';
+import '../../features/admin/presentation/pages/admin_reviews_page.dart';
 import '../../features/admin/presentation/pages/admin_user_details_page.dart';
 import '../../features/admin/presentation/pages/admin_user_filter_page.dart';
 
@@ -164,8 +164,6 @@ class AppRouter {
       return StudentAssignmentSubmissionPage(assignmentId: id);
     },
     AppRoutes.studentReviews: (_, __) => const StudentReviewsPage(),
-    // Notifications & Profile tabs are rendered inside StudentShell via
-    // IndexedStack. Keep light placeholders so deep links don't 404.
     AppRoutes.studentNotifications: (_, __) => _placeholder(
       'Notifications',
       subtitle: 'Rendered inside StudentShell',
@@ -209,24 +207,37 @@ class AppRouter {
       return InstructorCreateSectionPage(courseId: id);
     },
     AppRoutes.instructorEditSection: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorEditSectionPage(sectionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorEditSectionPage(
+        courseId: (m['courseId'] ?? '') as String,
+        sectionId: (m['sectionId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorReorderSections: (_, args) {
       final id = args is String ? args : '';
       return InstructorReorderSectionsPage(courseId: id);
     },
     AppRoutes.instructorLessons: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorLessonsPage(sectionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorLessonsPage(
+        courseId: (m['courseId'] ?? '') as String,
+        sectionId: (m['sectionId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorCreateLesson: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorCreateLessonPage(sectionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorCreateLessonPage(
+        courseId: (m['courseId'] ?? '') as String,
+        sectionId: (m['sectionId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorEditLesson: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorEditLessonPage(lessonId: id);
+      final m = args is Map ? args : const {};
+      return InstructorEditLessonPage(
+        courseId: (m['courseId'] ?? '') as String,
+        sectionId: (m['sectionId'] ?? '') as String,
+        lessonId: (m['lessonId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorLessonMedia: (_, args) {
       final id = args is String ? args : '';
@@ -241,20 +252,33 @@ class AppRouter {
       return InstructorCreateQuizPage(courseId: id);
     },
     AppRoutes.instructorEditQuiz: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorEditQuizPage(quizId: id);
+      final m = args is Map ? args : const {};
+      return InstructorEditQuizPage(
+        courseId: (m['courseId'] ?? '') as String,
+        quizId: (m['quizId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorQuestions: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorQuestionsPage(quizId: id);
+      final m = args is Map ? args : const {};
+      return InstructorQuestionsPage(
+        courseId: (m['courseId'] ?? '') as String,
+        quizId: (m['quizId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorCreateQuestion: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorCreateQuestionPage(quizId: id);
+      final m = args is Map ? args : const {};
+      return InstructorCreateQuestionPage(
+        courseId: (m['courseId'] ?? '') as String,
+        quizId: (m['quizId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorEditQuestion: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorEditQuestionPage(questionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorEditQuestionPage(
+        courseId: (m['courseId'] ?? '') as String,
+        quizId: (m['quizId'] ?? '') as String,
+        questionId: (m['questionId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorQuizAttempts: (_, args) {
       final id = args is String ? args : '';
@@ -269,32 +293,43 @@ class AppRouter {
       return InstructorCreateAssignmentPage(courseId: id);
     },
     AppRoutes.instructorEditAssignment: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorEditAssignmentPage(assignmentId: id);
+      final m = args is Map ? args : const {};
+      return InstructorEditAssignmentPage(
+        courseId: (m['courseId'] ?? '') as String,
+        assignmentId: (m['assignmentId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorSubmissions: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorSubmissionsPage(assignmentId: id);
+      final m = args is Map ? args : const {};
+      return InstructorSubmissionsPage(
+        courseId: (m['courseId'] ?? '') as String,
+        assignmentId: (m['assignmentId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorSubmissionDetails: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorSubmissionDetailsPage(submissionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorSubmissionDetailsPage(
+        submissionId: (m['submissionId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorGradeSubmission: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorGradeSubmissionPage(submissionId: id);
+      final m = args is Map ? args : const {};
+      return InstructorGradeSubmissionPage(
+        submissionId: (m['submissionId'] ?? '') as String,
+      );
     },
-    AppRoutes.instructorEnrollments: (_, __) =>
-    const InstructorEnrollmentsPage(),
+    AppRoutes.instructorEnrollments: (_, args) {
+      final id = args is String ? args : null;
+      return InstructorEnrollmentsPage(courseId: id);
+    },
     AppRoutes.instructorLearnerDetails: (_, args) {
       final id = args is String ? args : '';
       return InstructorLearnerDetailsPage(enrollmentId: id);
     },
     AppRoutes.instructorReviews: (_, args) {
       final id = args is String ? args : null;
-      return InstructorReviewsPage(courseId: id);
+      return InstructorReviewsPage(courseId: id ?? '');
     },
-    // Profile tab is rendered inside InstructorShell via IndexedStack.
     AppRoutes.instructorProfile: (_, __) => _placeholder(
       'Instructor Profile',
       subtitle: 'Rendered inside InstructorShell',
@@ -307,7 +342,7 @@ class AppRouter {
     const InstructorChangePasswordPage(),
 
     // ------------------------------------------------------------
-    // ADMIN (complete)
+    // ADMIN
     // ------------------------------------------------------------
     AppRoutes.adminDashboard: (_, __) => const AdminShell(),
     AppRoutes.adminUsers: (_, __) => const AdminShell(initialIndex: 1),
@@ -335,8 +370,7 @@ class AppRouter {
       final initial = args is AdminCourseFilterArgs ? args : null;
       return AdminCourseFilterPage(initial: initial);
     },
-    AppRoutes.adminEnrollments: (_, __) =>
-    const AdminEnrollmentsPage(),
+    AppRoutes.adminEnrollments: (_, __) => const AdminEnrollmentsPage(),
     AppRoutes.adminEnrollmentDetails: (_, args) {
       final id = args is String ? args : '';
       return AdminEnrollmentDetailsPage(enrollmentId: id);
@@ -410,5 +444,4 @@ class AppRouter {
       ),
     );
   }
-
 }

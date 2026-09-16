@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_lesson.dart';
+import '../../data/models/lesson.dart';
+import '../../providers/enrollment_provider.dart';
+import '../../providers/learning_provider.dart';
+import '../../providers/lesson_provider.dart';
 
 class StudentLessonPage extends StatefulWidget {
   const StudentLessonPage({super.key, required this.lessonId});
@@ -19,67 +24,101 @@ class StudentLessonPage extends StatefulWidget {
 }
 
 class _StudentLessonPageState extends State<StudentLessonPage> {
-  late bool _completed;
+  bool _completing = false;
 
   @override
   void initState() {
     super.initState();
-    final lesson = _findLesson(widget.lessonId);
-    _completed = lesson?.isCompleted ?? false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LessonProvider>().load(widget.lessonId);
+      context.read<EnrollmentProvider>().startLesson(widget.lessonId);
+    });
   }
 
-  MockLesson? _findLesson(String id) {
-    for (final l in MockLessons.flutterFundamentals) {
-      if (l.id == id) return l;
+  Future<void> _toggleComplete(Lesson lesson) async {
+    if (lesson.isCompleted) {
+      AppSnackbar.showInfo(context, 'Lesson already completed.');
+      return;
     }
-    return null;
-  }
+    setState(() => _completing = true);
 
-  void _toggleComplete() {
-    setState(() => _completed = !_completed);
-    AppSnackbar.showSuccess(
-      context,
-      _completed ? 'Lesson marked as complete (mock)' : 'Marked incomplete',
-    );
+    final enroll = context.read<EnrollmentProvider>();
+    final lessonProv = context.read<LessonProvider>();
+    final learning = context.read<LearningProvider>();
+
+    final ok = await enroll.completeLesson(lesson.id);
+
+    if (!mounted) return;
+    setState(() => _completing = false);
+
+    if (ok) {
+      lessonProv.markCompleted(lesson.id);
+      learning.markLessonCompleted(lesson.courseId, lesson.id);
+      AppSnackbar.showSuccess(context, 'Lesson marked as complete');
+    } else {
+      AppSnackbar.showError(
+        context,
+        enroll.errorMessage ?? 'Could not complete the lesson.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final lesson = _findLesson(widget.lessonId);
-    if (lesson == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Lesson not found')),
-      );
-    }
+    final provider = context.watch<LessonProvider>();
+    final state = provider.stateFor(widget.lessonId);
+    final lesson = provider.lessonById(widget.lessonId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          lesson.title,
+          lesson?.title ?? 'Lesson',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _typeHeader(lesson),
-            const SizedBox(height: AppSpacing.md),
-            _content(lesson),
-            const SizedBox(height: AppSpacing.xl),
-            _bottomActions(lesson),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-        ),
+        child: _buildBody(state as LoadState, lesson, provider),
       ),
     );
   }
 
-  Widget _typeHeader(MockLesson lesson) {
+  Widget _buildBody(
+      LoadState state,
+      Lesson? lesson,
+      LessonProvider provider,
+      ) {
+    if (state == LoadState.loading && lesson == null) {
+      return const AppLoading(message: 'Loading lesson…');
+    }
+    if (state == LoadState.error && lesson == null) {
+      return AppErrorState(
+        title: 'Could not load lesson',
+        message: provider.errorFor(widget.lessonId) ?? 'Please try again.',
+        onRetry: () =>
+            provider.load(widget.lessonId, force: true),
+      );
+    }
+    if (lesson == null) {
+      return const Center(child: Text('Lesson not found'));
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        _typeHeader(lesson),
+        const SizedBox(height: AppSpacing.md),
+        _content(lesson),
+        const SizedBox(height: AppSpacing.xl),
+        _bottomActions(lesson),
+        const SizedBox(height: AppSpacing.lg),
+      ],
+    );
+  }
+
+  Widget _typeHeader(Lesson lesson) {
     return Row(
       children: [
         Container(
@@ -98,24 +137,25 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
                   size: 14, color: AppColors.primary),
               const SizedBox(width: 4),
               Text(
-                lesson.type.label,
-                style: AppTextStyles.labelSmall.copyWith(
-                  color: AppColors.primary,
-                ),
+                lesson.type.name.toUpperCase(),
+                style: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.primary),
               ),
             ],
           ),
         ),
         const SizedBox(width: AppSpacing.xs),
-        Text(
-          Formatters.duration(lesson.durationMinutes),
-          style: AppTextStyles.caption,
-        ),
+        Text(Formatters.duration(lesson.durationMinutes),
+            style: AppTextStyles.caption),
+        const Spacer(),
+        if (lesson.isCompleted)
+          const Icon(Icons.check_circle_rounded,
+              color: AppColors.success, size: 20),
       ],
     );
   }
 
-  Widget _content(MockLesson lesson) {
+  Widget _content(Lesson lesson) {
     switch (lesson.type) {
       case LessonType.text:
         return _textContent(lesson);
@@ -126,7 +166,7 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
     }
   }
 
-  Widget _textContent(MockLesson lesson) {
+  Widget _textContent(Lesson lesson) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -135,13 +175,13 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
         border: Border.all(color: AppColors.border),
       ),
       child: Text(
-        lesson.content ?? 'No content.',
+        lesson.content ?? 'No content available.',
         style: AppTextStyles.bodyMedium.copyWith(height: 1.6),
       ),
     );
   }
 
-  Widget _videoContent(MockLesson lesson) {
+  Widget _videoContent(Lesson lesson) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -182,18 +222,12 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
                         AppSpacing.radiusPill,
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.play_arrow_rounded,
-                            size: 16, color: Colors.white),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Video placeholder · Phase 2 will play real media',
-                          style: AppTextStyles.caption.copyWith(
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      lesson.videoUrl ?? 'Video URL unavailable',
+                      style: AppTextStyles.caption
+                          .copyWith(color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -210,9 +244,8 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
             border: Border.all(color: AppColors.border),
           ),
           child: Text(
-            'Video content is not streamed in this phase. In the backend '
-                'integration phase, this area will host the media player '
-                'connected to the video URL provided by the backend.',
+            'Video playback will be added in a later phase. The video URL '
+                'is available above.',
             style: AppTextStyles.bodySmall,
           ),
         ),
@@ -220,7 +253,7 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
     );
   }
 
-  Widget _documentContent(MockLesson lesson) {
+  Widget _documentContent(Lesson lesson) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -260,8 +293,10 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'PDF · Tap below to preview',
+                      lesson.documentUrl ?? 'URL unavailable',
                       style: AppTextStyles.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -276,7 +311,7 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
           onPressed: () {
             AppSnackbar.showInfo(
               context,
-              'Document preview arrives with backend integration.',
+              'Document viewer arrives in a later phase.',
             );
           },
         ),
@@ -284,19 +319,14 @@ class _StudentLessonPageState extends State<StudentLessonPage> {
     );
   }
 
-  Widget _bottomActions(MockLesson lesson) {
-    return Row(
-      children: [
-        Expanded(
-          child: AppButton.secondary(
-            label: _completed ? 'Completed' : 'Mark as Complete',
-            icon: _completed
-                ? Icons.check_circle_rounded
-                : Icons.check_circle_outline_rounded,
-            onPressed: _toggleComplete,
-          ),
-        ),
-      ],
+  Widget _bottomActions(Lesson lesson) {
+    return AppButton.primary(
+      label: lesson.isCompleted ? 'Completed' : 'Mark as Complete',
+      icon: lesson.isCompleted
+          ? Icons.check_circle_rounded
+          : Icons.check_circle_outline_rounded,
+      isLoading: _completing,
+      onPressed: _completing ? null : () => _toggleComplete(lesson),
     );
   }
 
