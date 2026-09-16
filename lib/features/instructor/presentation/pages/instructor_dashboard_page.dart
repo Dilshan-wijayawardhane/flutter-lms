@@ -1,55 +1,85 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/mock_stats.dart';
-import '../../../../mock_data/mock_users.dart';
-import '../../../../mock_data/models/mock_course.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../../student/data/models/course.dart';
+import '../../../student/providers/instructor_course_provider.dart';
+import '../../../student/providers/profile_provider.dart';
 import '../widgets/dashboard_section.dart';
 import '../widgets/instructor_course_card.dart';
 import '../widgets/stat_card.dart';
 
-class InstructorDashboardPage extends StatelessWidget {
+class InstructorDashboardPage extends StatefulWidget {
   const InstructorDashboardPage({super.key});
 
-  static const _instructorId = 'user_instructor_001';
+  @override
+  State<InstructorDashboardPage> createState() =>
+      _InstructorDashboardPageState();
+}
+
+class _InstructorDashboardPageState
+    extends State<InstructorDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final profile = context.read<ProfileProvider>();
+      if (!profile.hasProfile) profile.load();
+
+      final courses = context.read<InstructorCourseProvider>();
+      if (courses.listState != LoadState.success) {
+        courses.loadMyCourses();
+      }
+    });
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      context.read<ProfileProvider>().load(force: true),
+      context
+          .read<InstructorCourseProvider>()
+          .loadMyCourses(force: true),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.instructorProfile1;
-    final stats = MockStats.instructor;
-    final myCourses = MockCourses.byInstructor(_instructorId);
-    final published = myCourses
-        .where((c) => c.status == CourseStatus.published)
-        .toList();
-    final recentSubmissions = MockSubmissions.all
-        .where((s) =>
-    s.status == SubmissionStatus.submitted ||
-        s.status == SubmissionStatus.resubmissionRequired)
-        .take(3)
-        .toList();
+    final profile = context.watch<ProfileProvider>().profile;
+    final coursesProv = context.watch<InstructorCourseProvider>();
+    final courses = coursesProv.courses;
+
+    final published =
+    courses.where((c) => c.status == CourseStatus.published).toList();
+    final drafts =
+    courses.where((c) => c.status == CourseStatus.draft).toList();
+    final archived =
+    courses.where((c) => c.status == CourseStatus.archived).toList();
+    final totalLearners =
+    courses.fold<int>(0, (sum, c) => sum + c.learnerCount);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            await Future.delayed(const Duration(milliseconds: 600));
-          },
+          onRefresh: _refresh,
           child: ListView(
             padding: const EdgeInsets.only(bottom: AppSpacing.xl),
             children: [
-              _header(context, profile.fullName),
+              _header(profile?.fullName ?? 'Instructor'),
               const SizedBox(height: AppSpacing.md),
-              _statsGrid(stats),
+              _statsGrid(
+                total: courses.length,
+                published: published.length,
+                drafts: drafts.length,
+                archived: archived.length,
+                learners: totalLearners,
+              ),
               const SizedBox(height: AppSpacing.md),
               _quickActions(context),
               InstructorDashboardSection(
@@ -57,7 +87,12 @@ class InstructorDashboardPage extends StatelessWidget {
                 actionLabel: 'See all',
                 onActionTap: () => Navigator.of(context)
                     .pushNamed(AppRoutes.instructorCourses),
-                child: Padding(
+                child: courses.isEmpty
+                    ? const Padding(
+                  padding: EdgeInsets.all(AppSpacing.md),
+                  child: Text('No courses yet'),
+                )
+                    : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
                   ),
@@ -70,35 +105,13 @@ class InstructorDashboardPage extends StatelessWidget {
                       ),
                       child: InstructorCourseCard(
                         course: c,
-                        onTap: () =>
-                            Navigator.of(context).pushNamed(
-                              AppRoutes.instructorCourseDetails,
-                              arguments: c.id,
-                            ),
+                        onTap: () => Navigator.of(context)
+                            .pushNamed(
+                          AppRoutes
+                              .instructorCourseDetails,
+                          arguments: c.id,
+                        ),
                       ),
-                    ))
-                        .toList(),
-                  ),
-                ),
-              ),
-              InstructorDashboardSection(
-                title: 'Recent Submissions',
-                actionLabel: 'See all',
-                onActionTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorSubmissions),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                  ),
-                  child: recentSubmissions.isEmpty
-                      ? _emptyRow('No recent submissions')
-                      : Column(
-                    children: recentSubmissions
-                        .map((s) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppSpacing.sm,
-                      ),
-                      child: _submissionRow(context, s),
                     ))
                         .toList(),
                   ),
@@ -110,7 +123,11 @@ class InstructorDashboardPage extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
                   ),
-                  child: _performanceCard(stats),
+                  child: _performanceCard(
+                    published: published.length,
+                    drafts: drafts.length,
+                    archived: archived.length,
+                  ),
                 ),
               ),
             ],
@@ -120,7 +137,7 @@ class InstructorDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _header(BuildContext context, String name) {
+  Widget _header(String name) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12
         ? 'Good morning'
@@ -158,35 +175,38 @@ class InstructorDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _statsGrid(stats) {
+  Widget _statsGrid({
+    required int total,
+    required int published,
+    required int drafts,
+    required int archived,
+    required int learners,
+  }) {
     final tiles = [
       StatCard(
         label: 'Total Courses',
-        value: '${stats.totalCourses}',
+        value: '$total',
         icon: Icons.menu_book_outlined,
         color: AppColors.primary,
-        subtitle: '${stats.publishedCourses} published',
+        subtitle: '$published published',
       ),
       StatCard(
         label: 'Learners',
-        value: Formatters.count(stats.totalLearners),
+        value: Formatters.count(learners),
         icon: Icons.people_alt_outlined,
         color: AppColors.info,
-        subtitle: '${stats.activeEnrollments} active',
       ),
       StatCard(
-        label: 'Pending',
-        value: '${stats.pendingSubmissions}',
-        icon: Icons.assignment_outlined,
+        label: 'Drafts',
+        value: '$drafts',
+        icon: Icons.edit_outlined,
         color: AppColors.warning,
-        subtitle: 'submissions',
       ),
       StatCard(
-        label: 'Rating',
-        value: stats.averageCourseRating.toStringAsFixed(1),
-        icon: Icons.star_outline_rounded,
-        color: AppColors.success,
-        subtitle: 'average',
+        label: 'Archived',
+        value: '$archived',
+        icon: Icons.archive_outlined,
+        color: AppColors.textTertiary,
       ),
     ];
 
@@ -214,18 +234,11 @@ class InstructorDashboardPage extends StatelessWidget {
             .pushNamed(AppRoutes.instructorCreateCourse),
       ),
       _QuickAction(
-        icon: Icons.quiz_outlined,
-        label: 'Quizzes',
+        icon: Icons.menu_book_outlined,
+        label: 'My Courses',
         color: AppColors.info,
         onTap: () => Navigator.of(context)
-            .pushNamed(AppRoutes.instructorQuizzes),
-      ),
-      _QuickAction(
-        icon: Icons.assignment_outlined,
-        label: 'Assignments',
-        color: AppColors.warning,
-        onTap: () => Navigator.of(context)
-            .pushNamed(AppRoutes.instructorAssignments),
+            .pushNamed(AppRoutes.instructorCourses),
       ),
       _QuickAction(
         icon: Icons.people_alt_outlined,
@@ -233,6 +246,13 @@ class InstructorDashboardPage extends StatelessWidget {
         color: AppColors.success,
         onTap: () => Navigator.of(context)
             .pushNamed(AppRoutes.instructorEnrollments),
+      ),
+      _QuickAction(
+        icon: Icons.assignment_outlined,
+        label: 'Assignments',
+        color: AppColors.warning,
+        onTap: () => Navigator.of(context)
+            .pushNamed(AppRoutes.instructorAssignments),
       ),
     ];
 
@@ -289,51 +309,11 @@ class InstructorDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _submissionRow(BuildContext context, submission) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          AppAvatar(name: submission.studentName, size: 32),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  submission.studentName,
-                  style: AppTextStyles.labelLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  submission.assignmentTitle,
-                  style: AppTextStyles.caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          AppButton.text(
-            label: 'Review',
-            onPressed: () => Navigator.of(context).pushNamed(
-              AppRoutes.instructorSubmissionDetails,
-              arguments: submission.id,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _performanceCard(stats) {
+  Widget _performanceCard({
+    required int published,
+    required int drafts,
+    required int archived,
+  }) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -343,23 +323,11 @@ class InstructorDashboardPage extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _perfRow('Draft courses', '${stats.draftCourses}',
-              AppColors.warning),
+          _perfRow('Published', '$published', AppColors.success),
           const Divider(height: AppSpacing.lg),
-          _perfRow('Published courses', '${stats.publishedCourses}',
-              AppColors.success),
+          _perfRow('Drafts', '$drafts', AppColors.warning),
           const Divider(height: AppSpacing.lg),
-          _perfRow('Archived courses', '${stats.archivedCourses}',
-              AppColors.textTertiary),
-          const Divider(height: AppSpacing.lg),
-          _perfRow('Recent quiz attempts', '${stats.recentQuizAttempts}',
-              AppColors.info),
-          const Divider(height: AppSpacing.lg),
-          _perfRow(
-            'Total revenue',
-            '\$${stats.totalRevenue.toStringAsFixed(2)}',
-            AppColors.primary,
-          ),
+          _perfRow('Archived', '$archived', AppColors.textTertiary),
         ],
       ),
     );
@@ -370,19 +338,11 @@ class InstructorDashboardPage extends StatelessWidget {
       children: [
         Text(label, style: AppTextStyles.bodySmall),
         const Spacer(),
-        Text(
-          value,
-          style: AppTextStyles.labelLarge.copyWith(color: color),
-        ),
+        Text(value,
+            style: AppTextStyles.labelLarge.copyWith(color: color)),
       ],
     );
   }
-
-  Widget _emptyRow(String text) => Container(
-    padding: const EdgeInsets.all(AppSpacing.md),
-    alignment: Alignment.center,
-    child: Text(text, style: AppTextStyles.caption),
-  );
 }
 
 class _QuickAction {

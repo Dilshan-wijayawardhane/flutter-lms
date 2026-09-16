@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
 class InstructorCreateQuizPage extends StatefulWidget {
   const InstructorCreateQuizPage({super.key, required this.courseId});
@@ -42,14 +43,33 @@ class _InstructorCreateQuizPageState
   Future<void> _save({bool publish = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+
+    final p = context.read<InstructorQuizProvider>();
+    final created = await p.createQuiz(
+      courseId: widget.courseId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      durationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 20,
+      passingScore: int.tryParse(_passingCtrl.text.trim()) ?? 60,
+      maxAttempts: int.tryParse(_attemptsCtrl.text.trim()) ?? 3,
+      publish: publish,
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(
-      context,
-      publish ? 'Quiz published (mock).' : 'Quiz saved as draft (mock).',
-    );
-    Navigator.of(context).pop();
+
+    if (created != null) {
+      AppSnackbar.showSuccess(
+        context,
+        publish ? 'Quiz published.' : 'Quiz saved as draft.',
+      );
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.listErrorFor(widget.courseId) ?? 'Could not create quiz.',
+      );
+    }
   }
 
   @override
@@ -67,7 +87,6 @@ class _InstructorCreateQuizPageState
               AppTextField(
                 controller: _titleCtrl,
                 label: 'Quiz title',
-                hint: 'e.g., Flutter Basics Quiz',
                 prefixIcon: Icons.title_rounded,
                 validator: (v) =>
                     Validators.minLength(v, 3, field: 'Quiz title'),
@@ -76,7 +95,6 @@ class _InstructorCreateQuizPageState
               AppTextField(
                 controller: _descCtrl,
                 label: 'Description (optional)',
-                hint: 'What will this quiz cover?',
                 maxLines: 3,
                 minLines: 2,
               ),
@@ -87,10 +105,12 @@ class _InstructorCreateQuizPageState
                     child: AppTextField(
                       controller: _durationCtrl,
                       label: 'Duration (min)',
-                      prefixIcon: Icons.timer_outlined,
                       keyboardType: TextInputType.number,
-                      validator: (v) =>
-                          _positiveInt(v, 'Duration'),
+                      validator: (v) {
+                        final n = int.tryParse(v ?? '');
+                        if (n == null || n <= 0) return 'Invalid';
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -98,12 +118,11 @@ class _InstructorCreateQuizPageState
                     child: AppTextField(
                       controller: _passingCtrl,
                       label: 'Passing (%)',
-                      prefixIcon: Icons.flag_outlined,
                       keyboardType: TextInputType.number,
                       validator: (v) {
-                        final parsed = int.tryParse(v ?? '');
-                        if (parsed == null || parsed < 1 || parsed > 100) {
-                          return 'Must be 1–100';
+                        final n = int.tryParse(v ?? '');
+                        if (n == null || n < 1 || n > 100) {
+                          return '1–100';
                         }
                         return null;
                       },
@@ -115,16 +134,19 @@ class _InstructorCreateQuizPageState
               AppTextField(
                 controller: _attemptsCtrl,
                 label: 'Max attempts',
-                prefixIcon: Icons.repeat_rounded,
                 keyboardType: TextInputType.number,
-                validator: (v) => _positiveInt(v, 'Attempts'),
+                validator: (v) {
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n <= 0) return 'Invalid';
+                  return null;
+                },
               ),
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save as Draft',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: () => _save(publish: false),
+                onPressed: _saving ? null : () => _save(publish: false),
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -132,24 +154,10 @@ class _InstructorCreateQuizPageState
                 icon: Icons.publish_rounded,
                 onPressed: _saving ? null : () => _save(publish: true),
               ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'Add questions after saving. Publishing requires at least '
-                    'one question.',
-                style: AppTextStyles.caption,
-              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  String? _positiveInt(String? v, String field) {
-    final parsed = int.tryParse(v ?? '');
-    if (parsed == null || parsed <= 0) {
-      return 'Enter a valid $field';
-    }
-    return null;
   }
 }

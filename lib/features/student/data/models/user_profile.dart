@@ -19,6 +19,13 @@ class UserProfile {
     this.learningGoals = const [],
     this.interests = const [],
     this.createdAt,
+    this.headline,
+    this.qualification,
+    this.experienceYears,
+    this.expertise = const [],
+    this.totalCourses,
+    this.totalLearners,
+    this.averageRating,
   });
 
   final String id;
@@ -35,6 +42,14 @@ class UserProfile {
   final List<String> learningGoals;
   final List<String> interests;
   final DateTime? createdAt;
+  // Instructor-specific fields (null for students / admins)
+  final String? headline;
+  final String? qualification;
+  final int? experienceYears;
+  final List<String> expertise;
+  final int? totalCourses;
+  final int? totalLearners;
+  final double? averageRating;
 
   UserProfile copyWith({
     String? fullName,

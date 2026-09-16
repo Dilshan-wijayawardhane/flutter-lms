@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../mock_data/models/mock_section.dart';
+import '../../../student/data/models/section.dart';
 
-/// Section row used on the instructor sections page.
-/// Shows order, title, lesson count, and edit/delete actions.
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -16,7 +14,7 @@ class SectionCard extends StatelessWidget {
     this.onDelete,
   });
 
-  final MockSection section;
+  final CourseSection section;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
@@ -83,11 +81,8 @@ class SectionCard extends StatelessWidget {
                 ),
               if (onDelete != null)
                 IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    size: 18,
-                    color: AppColors.danger,
-                  ),
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      size: 18, color: AppColors.danger),
                   tooltip: 'Delete',
                   onPressed: onDelete,
                 ),

@@ -1,53 +1,87 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_empty_state.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz_attempt.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../student/data/models/quiz_attempt.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
-class InstructorQuizAttemptsPage extends StatelessWidget {
+class InstructorQuizAttemptsPage extends StatefulWidget {
   const InstructorQuizAttemptsPage({super.key, required this.quizId});
 
   final String quizId;
 
   @override
+  State<InstructorQuizAttemptsPage> createState() =>
+      _InstructorQuizAttemptsPageState();
+}
+
+class _InstructorQuizAttemptsPageState
+    extends State<InstructorQuizAttemptsPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InstructorQuizProvider>().loadAttempts(widget.quizId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final attempts = MockQuizAttempts.byInstructor
-        .where((a) => a.quizId == quizId)
-        .toList()
-      ..sort((a, b) =>
-          (b.submittedAt ?? DateTime(0)).compareTo(a.submittedAt ?? DateTime(0)));
+    final p = context.watch<InstructorQuizProvider>();
+    final state = p.attemptsStateFor(widget.quizId);
+    final attempts = p.attemptsFor(widget.quizId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Quiz Attempts')),
       body: SafeArea(
         top: false,
-        child: attempts.isEmpty
+        child: state == LoadState.loading && attempts.isEmpty
+            ? const AppLoading(message: 'Loading attempts…')
+            : state == LoadState.error && attempts.isEmpty
+            ? AppErrorState(
+          title: 'Could not load attempts',
+          message: 'Please try again.',
+          onRetry: () => p.loadAttempts(
+            widget.quizId,
+            force: true,
+          ),
+        )
+            : attempts.isEmpty
             ? const AppEmptyState(
           icon: Icons.history_rounded,
           title: 'No attempts yet',
           message:
-          'Student attempts will appear here once they take the '
-              'quiz.',
+          'Student attempts will appear here once they take the quiz.',
         )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: attempts.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) => _attemptCard(attempts[i]),
+            : RefreshIndicator(
+          onRefresh: () => p.loadAttempts(
+            widget.quizId,
+            force: true,
+          ),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            itemCount: attempts.length,
+            separatorBuilder: (_, __) =>
+            const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (_, i) =>
+                _attemptCard(attempts[i]),
+          ),
         ),
       ),
     );
   }
 
-  Widget _attemptCard(MockQuizAttempt attempt) {
-    final passed = attempt.passed ?? false;
+  Widget _attemptCard(QuizAttempt a) {
+    final passed = a.passed ?? false;
     final color = passed ? AppColors.success : AppColors.danger;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -61,21 +95,19 @@ class InstructorQuizAttemptsPage extends StatelessWidget {
         children: [
           Row(
             children: [
-              AppAvatar(name: attempt.studentName, size: 36),
+              AppAvatar(name: a.quizTitle, size: 36),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      attempt.studentName,
+                      'Attempt ${a.attemptNumber}',
                       style: AppTextStyles.labelLarge,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Attempt ${attempt.attemptNumber} · ${Formatters.relative(attempt.submittedAt)}',
+                      Formatters.relative(a.submittedAt),
                       style: AppTextStyles.caption,
                     ),
                   ],
@@ -93,7 +125,8 @@ class InstructorQuizAttemptsPage extends StatelessWidget {
                 ),
                 child: Text(
                   passed ? 'PASSED' : 'FAILED',
-                  style: AppTextStyles.labelSmall.copyWith(color: color),
+                  style:
+                  AppTextStyles.labelSmall.copyWith(color: color),
                 ),
               ),
             ],
@@ -105,17 +138,17 @@ class InstructorQuizAttemptsPage extends StatelessWidget {
             children: [
               _stat(
                 'Score',
-                '${attempt.score ?? '—'}/${attempt.totalPoints ?? '—'}',
+                '${a.score ?? '—'}/${a.totalPoints ?? '—'}',
               ),
               _stat(
                 'Percent',
-                attempt.scorePercent == null
+                a.scorePercent == null
                     ? '—'
-                    : '${attempt.scorePercent!.toStringAsFixed(0)}%',
+                    : '${a.scorePercent!.toStringAsFixed(0)}%',
               ),
               _stat(
                 'Duration',
-                Formatters.durationSeconds(attempt.durationSeconds),
+                Formatters.durationSeconds(a.durationSeconds),
               ),
             ],
           ),

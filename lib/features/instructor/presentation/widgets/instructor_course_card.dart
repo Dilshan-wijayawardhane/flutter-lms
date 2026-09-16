@@ -4,10 +4,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
 
-/// Course card variant used by the instructor course list.
-/// Shows status, title, learners, rating, and lesson count.
 class InstructorCourseCard extends StatelessWidget {
   const InstructorCourseCard({
     super.key,
@@ -15,7 +13,7 @@ class InstructorCourseCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockCourse course;
+  final Course course;
   final VoidCallback? onTap;
 
   @override
@@ -56,12 +54,30 @@ class InstructorCourseCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      course.categoryName,
-                      style: AppTextStyles.caption,
-                    ),
+                    Text(course.categoryName,
+                        style: AppTextStyles.caption),
                     const SizedBox(height: 6),
-                    _metaRow(),
+                    Row(
+                      children: [
+                        const Icon(Icons.people_alt_outlined,
+                            size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 2),
+                        Text('${course.learnerCount}',
+                            style: AppTextStyles.caption),
+                        const SizedBox(width: AppSpacing.sm),
+                        const Icon(Icons.star_rounded,
+                            size: 14, color: AppColors.star),
+                        const SizedBox(width: 2),
+                        Text(course.rating.toStringAsFixed(1),
+                            style: AppTextStyles.caption),
+                        const SizedBox(width: AppSpacing.sm),
+                        const Icon(Icons.menu_book_outlined,
+                            size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 2),
+                        Text('${course.lessonCount}',
+                            style: AppTextStyles.caption),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -108,28 +124,5 @@ class InstructorCourseCard extends StatelessWidget {
       case CourseStatus.archived:
         return const AppStatusChip(status: AppStatus.archived);
     }
-  }
-
-  Widget _metaRow() {
-    return Row(
-      children: [
-        const Icon(Icons.people_alt_outlined,
-            size: 14, color: AppColors.textTertiary),
-        const SizedBox(width: 2),
-        Text('${course.learnerCount}', style: AppTextStyles.caption),
-        const SizedBox(width: AppSpacing.sm),
-        const Icon(Icons.star_rounded,
-            size: 14, color: AppColors.star),
-        const SizedBox(width: 2),
-        Text(course.rating.toStringAsFixed(1),
-            style: AppTextStyles.caption),
-        const SizedBox(width: AppSpacing.sm),
-        const Icon(Icons.menu_book_outlined,
-            size: 14, color: AppColors.textTertiary),
-        const SizedBox(width: 2),
-        Text('${course.lessonCount} lessons',
-            style: AppTextStyles.caption),
-      ],
-    );
   }
 }

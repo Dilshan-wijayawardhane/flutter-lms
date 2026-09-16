@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/models/mock_assignment.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../../student/data/models/assignment.dart';
+import '../../../student/data/models/submission.dart';
+import '../../providers/instructor_assignment_provider.dart';
 
 class InstructorAssignmentsPage extends StatefulWidget {
   const InstructorAssignmentsPage({super.key, required this.courseId});
@@ -25,56 +29,62 @@ class InstructorAssignmentsPage extends StatefulWidget {
 
 class _InstructorAssignmentsPageState
     extends State<InstructorAssignmentsPage> {
-  int _tab = 0; // 0=All, 1=Draft, 2=Published
-  late List<MockAssignment> _assignments;
+  int _tab = 0;
 
   @override
   void initState() {
     super.initState();
-    _assignments = List.of(MockAssignments.byCourse(widget.courseId));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context
+          .read<InstructorAssignmentProvider>()
+          .loadAssignments(widget.courseId);
+    });
   }
 
-  List<MockAssignment> get _filtered {
+  List<Assignment> _filtered(InstructorAssignmentProvider p) {
+    final list = p.assignmentsFor(widget.courseId);
     switch (_tab) {
       case 1:
-        return _assignments
+        return list
             .where((a) => a.status == AssignmentStatus.draft)
             .toList();
       case 2:
-        return _assignments
+        return list
             .where((a) => a.status == AssignmentStatus.published)
             .toList();
       default:
-        return _assignments;
+        return list;
     }
   }
 
-  int _submissionCount(String assignmentId) =>
-      MockSubmissions.byAssignment(assignmentId).length;
-
-  int _pendingCount(String assignmentId) => MockSubmissions.byAssignment(
-    assignmentId,
-  ).where((s) => s.status == SubmissionStatus.submitted).length;
-
-  Future<void> _delete(MockAssignment a) async {
+  Future<void> _delete(Assignment a) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete assignment?',
       message:
-      '"${a.title}" and all its submissions will be removed. This '
-          'cannot be undone.',
+      '"${a.title}" and all submissions will be permanently removed.',
       confirmLabel: 'Delete',
       isDestructive: true,
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    setState(() => _assignments.removeWhere((x) => x.id == a.id));
-    AppSnackbar.showSuccess(context, 'Assignment deleted (mock).');
+    final ok = await context
+        .read<InstructorAssignmentProvider>()
+        .deleteAssignment(
+      courseId: widget.courseId,
+      assignmentId: a.id,
+    );
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Assignment deleted.' : 'Could not delete.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final p = context.watch<InstructorAssignmentProvider>();
+    final state = p.listStateFor(widget.courseId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -100,25 +110,20 @@ class _InstructorAssignmentsPageState
       ),
       body: SafeArea(
         top: false,
-        child: list.isEmpty
-            ? AppEmptyState(
-          icon: Icons.assignment_outlined,
-          title: _emptyTitle,
-          message:
-          'Create an assignment to evaluate student work.',
-          actionLabel: 'Create Assignment',
-          onAction: () => Navigator.of(context).pushNamed(
-            AppRoutes.instructorCreateAssignment,
-            arguments: widget.courseId,
+        child: state == LoadState.loading &&
+            p.assignmentsFor(widget.courseId).isEmpty
+            ? const AppLoading(message: 'Loading assignments…')
+            : state == LoadState.error
+            ? AppErrorState(
+          title: 'Could not load assignments',
+          message: p.listErrorFor(widget.courseId) ??
+              'Please try again.',
+          onRetry: () => p.loadAssignments(
+            widget.courseId,
+            force: true,
           ),
         )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: list.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) => _assignmentCard(list[i]),
-        ),
+            : _body(p),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed(
@@ -131,20 +136,39 @@ class _InstructorAssignmentsPageState
     );
   }
 
-  String get _emptyTitle {
-    switch (_tab) {
-      case 1:
-        return 'No draft assignments';
-      case 2:
-        return 'No published assignments';
-      default:
-        return 'No assignments yet';
+  Widget _body(InstructorAssignmentProvider p) {
+    final list = _filtered(p);
+    if (list.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.assignment_outlined,
+        title: 'No assignments yet',
+        message: 'Create an assignment to evaluate student work.',
+        actionLabel: 'Create Assignment',
+        onAction: () => Navigator.of(context).pushNamed(
+          AppRoutes.instructorCreateAssignment,
+          arguments: widget.courseId,
+        ),
+      );
     }
+
+    return RefreshIndicator(
+      onRefresh: () =>
+          p.loadAssignments(widget.courseId, force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: list.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) => _card(p, list[i]),
+      ),
+    );
   }
 
-  Widget _assignmentCard(MockAssignment a) {
-    final submissions = _submissionCount(a.id);
-    final pending = _pendingCount(a.id);
+  Widget _card(InstructorAssignmentProvider p, Assignment a) {
+    final submissions = p.submissionsFor(a.id);
+    final pending = submissions
+        .where((s) => s.status == SubmissionStatus.submitted)
+        .length;
 
     return Material(
       color: AppColors.card,
@@ -153,7 +177,10 @@ class _InstructorAssignmentsPageState
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         onTap: () => Navigator.of(context).pushNamed(
           AppRoutes.instructorSubmissions,
-          arguments: a.id,
+          arguments: {
+            'courseId': widget.courseId,
+            'assignmentId': a.id,
+          },
         ),
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -167,12 +194,10 @@ class _InstructorAssignmentsPageState
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      a.title,
-                      style: AppTextStyles.headingSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(a.title,
+                        style: AppTextStyles.headingSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
                   ),
                   const SizedBox(width: AppSpacing.xs),
                   if (a.status == AssignmentStatus.published)
@@ -196,8 +221,6 @@ class _InstructorAssignmentsPageState
                   ),
                   _meta(Icons.emoji_events_outlined,
                       '${a.maxPoints} pts'),
-                  _meta(Icons.assignment_turned_in_outlined,
-                      '$submissions submissions'),
                   if (pending > 0)
                     _meta(Icons.pending_actions_outlined,
                         '$pending to grade',
@@ -210,7 +233,10 @@ class _InstructorAssignmentsPageState
                   TextButton.icon(
                     onPressed: () => Navigator.of(context).pushNamed(
                       AppRoutes.instructorEditAssignment,
-                      arguments: a.id,
+                      arguments: {
+                        'courseId': widget.courseId,
+                        'assignmentId': a.id,
+                      },
                     ),
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     label: const Text('Edit'),
@@ -218,7 +244,10 @@ class _InstructorAssignmentsPageState
                   TextButton.icon(
                     onPressed: () => Navigator.of(context).pushNamed(
                       AppRoutes.instructorSubmissions,
-                      arguments: a.id,
+                      arguments: {
+                        'courseId': widget.courseId,
+                        'assignmentId': a.id,
+                      },
                     ),
                     icon: const Icon(Icons.people_alt_outlined, size: 18),
                     label: const Text('Submissions'),
@@ -226,10 +255,8 @@ class _InstructorAssignmentsPageState
                   const Spacer(),
                   IconButton(
                     onPressed: () => _delete(a),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: AppColors.danger,
-                    ),
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        color: AppColors.danger),
                     tooltip: 'Delete',
                   ),
                 ],
@@ -241,7 +268,8 @@ class _InstructorAssignmentsPageState
     );
   }
 
-  Widget _meta(IconData icon, String label, {bool highlight = false}) {
+  Widget _meta(IconData icon, String label,
+      {bool highlight = false}) {
     final color =
     highlight ? AppColors.warning : AppColors.textSecondary;
     return Container(
@@ -260,14 +288,8 @@ class _InstructorAssignmentsPageState
         children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: AppTextStyles.caption.copyWith(
-              color: highlight ? color : null,
-              fontWeight:
-              highlight ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
+          Text(label,
+              style: AppTextStyles.caption.copyWith(color: color)),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -8,15 +9,19 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz_question.dart';
+import '../../../student/data/models/quiz_question.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
 class InstructorEditQuestionPage extends StatefulWidget {
   const InstructorEditQuestionPage({
     super.key,
+    required this.courseId,
+    required this.quizId,
     required this.questionId,
   });
 
+  final String courseId;
+  final String quizId;
   final String questionId;
 
   @override
@@ -31,26 +36,35 @@ class _InstructorEditQuestionPageState
   final _pointsCtrl = TextEditingController();
   final List<TextEditingController> _optionCtrls = [];
 
-  MockQuizQuestion? _question;
+  QuizQuestion? _question;
   int _correctIndex = 0;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _question = _find();
-    final q = _question;
-    _questionCtrl.text = q?.text ?? '';
-    _pointsCtrl.text = '${q?.points ?? 10}';
-    if (q != null) {
-      for (final o in q.options) {
-        _optionCtrls.add(TextEditingController(text: o));
+    final list = context
+        .read<InstructorQuizProvider>()
+        .questionsFor(widget.quizId);
+    for (final q in list) {
+      if (q.id == widget.questionId) {
+        _question = q;
+        break;
       }
-      _correctIndex = q.correctOptionIndex ?? 0;
-    } else {
+    }
+
+    _questionCtrl.text = _question?.text ?? '';
+    _pointsCtrl.text = '${_question?.points ?? 10}';
+    for (final o in _question?.options ?? const <String>[]) {
+      _optionCtrls.add(TextEditingController(text: o));
+    }
+    if (_optionCtrls.isEmpty) {
       _optionCtrls.add(TextEditingController());
       _optionCtrls.add(TextEditingController());
     }
+    // Correct option isn't returned by the student-facing model.
+    // Default to first.
+    _correctIndex = 0;
   }
 
   @override
@@ -61,13 +75,6 @@ class _InstructorEditQuestionPageState
       c.dispose();
     }
     super.dispose();
-  }
-
-  MockQuizQuestion? _find() {
-    for (final q in MockQuizQuestions.flutterBasics) {
-      if (q.id == widget.questionId) return q;
-    }
-    return null;
   }
 
   void _addOption() {
@@ -88,34 +95,59 @@ class _InstructorEditQuestionPageState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+
+    final options = _optionCtrls
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    final p = context.read<InstructorQuizProvider>();
+    final ok = await p.updateQuestion(
+      quizId: widget.quizId,
+      questionId: widget.questionId,
+      text: _questionCtrl.text.trim(),
+      options: options,
+      correctOptionIndex: _correctIndex,
+      points: int.tryParse(_pointsCtrl.text.trim()),
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Question updated (mock).');
-    Navigator.of(context).pop();
+
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Question updated.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not update question.');
+    }
   }
 
   Future<void> _delete() async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete question?',
-      message: 'The question will be permanently removed from this quiz.',
+      message: 'The question will be permanently removed.',
       confirmLabel: 'Delete',
       isDestructive: true,
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    AppSnackbar.showInfo(
-      context,
-      'Delete will call the backend in Phase 2.',
+    final ok = await context
+        .read<InstructorQuizProvider>()
+        .deleteQuestion(
+      quizId: widget.quizId,
+      questionId: widget.questionId,
     );
-    Navigator.of(context).pop();
+    if (!mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Question deleted.');
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final q = _question;
-    if (q == null) {
+    if (_question == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Question not found')),
@@ -128,10 +160,8 @@ class _InstructorEditQuestionPageState
         title: const Text('Edit Question'),
         actions: [
           IconButton(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: AppColors.danger,
-            ),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
             tooltip: 'Delete',
             onPressed: _delete,
           ),
@@ -158,18 +188,10 @@ class _InstructorEditQuestionPageState
                 label: 'Points',
                 prefixIcon: Icons.emoji_events_outlined,
                 keyboardType: TextInputType.number,
-                validator: (v) {
-                  final parsed = int.tryParse(v ?? '');
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter a valid number';
-                  }
-                  return null;
-                },
               ),
               const SizedBox(height: AppSpacing.lg),
               Text('Options', style: AppTextStyles.headingSmall),
               const SizedBox(height: AppSpacing.sm),
-
               ...List.generate(_optionCtrls.length, (i) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -233,20 +255,18 @@ class _InstructorEditQuestionPageState
                   ),
                 );
               }),
-
               if (_optionCtrls.length < 6)
                 OutlinedButton.icon(
                   onPressed: _addOption,
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add option'),
                 ),
-
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save Changes',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -10,12 +11,17 @@ import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz.dart';
+import '../../../student/data/models/quiz.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
 class InstructorEditQuizPage extends StatefulWidget {
-  const InstructorEditQuizPage({super.key, required this.quizId});
+  const InstructorEditQuizPage({
+    super.key,
+    required this.courseId,
+    required this.quizId,
+  });
 
+  final String courseId;
   final String quizId;
 
   @override
@@ -26,25 +32,29 @@ class InstructorEditQuizPage extends StatefulWidget {
 class _InstructorEditQuizPageState
     extends State<InstructorEditQuizPage> {
   final _formKey = GlobalKey<FormState>();
-  final _titleCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-  final _durationCtrl = TextEditingController();
-  final _passingCtrl = TextEditingController();
-  final _attemptsCtrl = TextEditingController();
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _descCtrl;
+  late final TextEditingController _durationCtrl;
+  late final TextEditingController _passingCtrl;
+  late final TextEditingController _attemptsCtrl;
 
-  MockQuiz? _quiz;
+  Quiz? _quiz;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _quiz = _find();
-    final q = _quiz;
-    _titleCtrl.text = q?.title ?? '';
-    _descCtrl.text = q?.description ?? '';
-    _durationCtrl.text = '${q?.durationMinutes ?? 20}';
-    _passingCtrl.text = '${q?.passingScore ?? 60}';
-    _attemptsCtrl.text = '${q?.maxAttempts ?? 3}';
+    _quiz = context
+        .read<InstructorQuizProvider>()
+        .quizById(widget.courseId, widget.quizId);
+    _titleCtrl = TextEditingController(text: _quiz?.title ?? '');
+    _descCtrl = TextEditingController(text: _quiz?.description ?? '');
+    _durationCtrl =
+        TextEditingController(text: '${_quiz?.durationMinutes ?? 20}');
+    _passingCtrl =
+        TextEditingController(text: '${_quiz?.passingScore ?? 60}');
+    _attemptsCtrl =
+        TextEditingController(text: '${_quiz?.maxAttempts ?? 3}');
   }
 
   @override
@@ -57,47 +67,66 @@ class _InstructorEditQuizPageState
     super.dispose();
   }
 
-  MockQuiz? _find() {
-    for (final q in MockQuizzes.all) {
-      if (q.id == widget.quizId) return q;
-    }
-    return null;
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final p = context.read<InstructorQuizProvider>();
+    final ok = await p.updateQuiz(
+      courseId: widget.courseId,
+      quizId: widget.quizId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      durationMinutes: int.tryParse(_durationCtrl.text.trim()),
+      passingScore: int.tryParse(_passingCtrl.text.trim()),
+      maxAttempts: int.tryParse(_attemptsCtrl.text.trim()),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Quiz updated (mock).');
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Quiz updated.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not update.');
+    }
   }
 
-  Future<void> _togglePublish() async {
-    final q = _quiz;
-    if (q == null) return;
-    final action = q.status == QuizStatus.published ? 'Unpublish' : 'Publish';
+  Future<void> _publish() async {
+    final ok = await context.read<InstructorQuizProvider>().publishQuiz(
+      courseId: widget.courseId,
+      quizId: widget.quizId,
+    );
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Quiz published.' : 'Could not publish.',
+    );
+  }
+
+  Future<void> _delete() async {
     final confirmed = await AppConfirmationDialog.show(
       context,
-      title: '$action quiz?',
-      message: q.status == QuizStatus.published
-          ? 'The quiz will no longer be visible to students.'
-          : 'The quiz will become available to students.',
-      confirmLabel: action,
-      icon: Icons.publish_rounded,
+      title: 'Delete quiz?',
+      message: 'The quiz and all attempts will be permanently removed.',
+      confirmLabel: 'Delete',
+      isDestructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    AppSnackbar.showInfo(
-      context,
-      '$action will call the backend in Phase 2.',
+    final ok = await context.read<InstructorQuizProvider>().deleteQuiz(
+      courseId: widget.courseId,
+      quizId: widget.quizId,
     );
+    if (!mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Quiz deleted.');
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final quiz = _quiz;
-    if (quiz == null) {
+    final q = _quiz;
+    if (q == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Quiz not found')),
@@ -110,12 +139,10 @@ class _InstructorEditQuizPageState
         title: const Text('Edit Quiz'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.help_outline_rounded),
-            tooltip: 'Questions',
-            onPressed: () => Navigator.of(context).pushNamed(
-              AppRoutes.instructorQuestions,
-              arguments: quiz.id,
-            ),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
+            tooltip: 'Delete',
+            onPressed: _delete,
           ),
         ],
       ),
@@ -126,9 +153,8 @@ class _InstructorEditQuizPageState
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              _statusCard(quiz),
+              _statusCard(q),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _titleCtrl,
                 label: 'Quiz title',
@@ -150,9 +176,7 @@ class _InstructorEditQuizPageState
                     child: AppTextField(
                       controller: _durationCtrl,
                       label: 'Duration (min)',
-                      prefixIcon: Icons.timer_outlined,
                       keyboardType: TextInputType.number,
-                      validator: (v) => _positiveInt(v, 'Duration'),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -160,15 +184,7 @@ class _InstructorEditQuizPageState
                     child: AppTextField(
                       controller: _passingCtrl,
                       label: 'Passing (%)',
-                      prefixIcon: Icons.flag_outlined,
                       keyboardType: TextInputType.number,
-                      validator: (v) {
-                        final parsed = int.tryParse(v ?? '');
-                        if (parsed == null || parsed < 1 || parsed > 100) {
-                          return 'Must be 1–100';
-                        }
-                        return null;
-                      },
                     ),
                   ),
                 ],
@@ -177,26 +193,26 @@ class _InstructorEditQuizPageState
               AppTextField(
                 controller: _attemptsCtrl,
                 label: 'Max attempts',
-                prefixIcon: Icons.repeat_rounded,
                 keyboardType: TextInputType.number,
-                validator: (v) => _positiveInt(v, 'Attempts'),
               ),
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save Changes',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
-                label: quiz.status == QuizStatus.published
-                    ? 'Unpublish'
+                label: q.status == QuizStatus.published
+                    ? 'Unpublish (mock)'
                     : 'Publish Quiz',
-                icon: quiz.status == QuizStatus.published
+                icon: q.status == QuizStatus.published
                     ? Icons.pause_circle_outline_rounded
                     : Icons.publish_rounded,
-                onPressed: _togglePublish,
+                onPressed: q.status == QuizStatus.published
+                    ? null
+                    : _publish,
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -204,7 +220,10 @@ class _InstructorEditQuizPageState
                 icon: Icons.list_alt_rounded,
                 onPressed: () => Navigator.of(context).pushNamed(
                   AppRoutes.instructorQuestions,
-                  arguments: quiz.id,
+                  arguments: {
+                    'courseId': widget.courseId,
+                    'quizId': widget.quizId,
+                  },
                 ),
               ),
             ],
@@ -214,7 +233,7 @@ class _InstructorEditQuizPageState
     );
   }
 
-  Widget _statusCard(MockQuiz quiz) {
+  Widget _statusCard(Quiz q) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -224,42 +243,15 @@ class _InstructorEditQuizPageState
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Questions', style: AppTextStyles.caption),
-                const SizedBox(height: 2),
-                Text('${quiz.questionCount}',
-                    style: AppTextStyles.labelLarge),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Total points', style: AppTextStyles.caption),
-                const SizedBox(height: 2),
-                Text('${quiz.totalPoints}',
-                    style: AppTextStyles.labelLarge),
-              ],
-            ),
-          ),
-          if (quiz.status == QuizStatus.published)
+          Text('${q.questionCount} questions · ${q.totalPoints} pts',
+              style: AppTextStyles.caption),
+          const Spacer(),
+          if (q.status == QuizStatus.published)
             const AppStatusChip(status: AppStatus.published)
           else
             const AppStatusChip(status: AppStatus.draft),
         ],
       ),
     );
-  }
-
-  String? _positiveInt(String? v, String field) {
-    final parsed = int.tryParse(v ?? '');
-    if (parsed == null || parsed <= 0) {
-      return 'Enter a valid $field';
-    }
-    return null;
   }
 }

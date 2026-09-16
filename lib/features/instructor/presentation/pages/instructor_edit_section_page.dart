@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -7,11 +8,16 @@ import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/mock_quizzes.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
 class InstructorEditSectionPage extends StatefulWidget {
-  const InstructorEditSectionPage({super.key, required this.sectionId});
+  const InstructorEditSectionPage({
+    super.key,
+    required this.courseId,
+    required this.sectionId,
+  });
 
+  final String courseId;
   final String sectionId;
 
   @override
@@ -22,16 +28,21 @@ class InstructorEditSectionPage extends StatefulWidget {
 class _InstructorEditSectionPageState
     extends State<InstructorEditSectionPage> {
   final _formKey = GlobalKey<FormState>();
-  final _titleCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _descCtrl;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    final s = _find();
-    _titleCtrl.text = s?.title ?? '';
-    _descCtrl.text = s?.description ?? '';
+    final sections =
+    context.read<InstructorCourseProvider>().sectionsFor(widget.courseId);
+    final s = sections.firstWhere(
+          (x) => x.id == widget.sectionId,
+      orElse: () => throw StateError('Section not found'),
+    );
+    _titleCtrl = TextEditingController(text: s.title);
+    _descCtrl = TextEditingController(text: s.description ?? '');
   }
 
   @override
@@ -41,44 +52,54 @@ class _InstructorEditSectionPageState
     super.dispose();
   }
 
-  dynamic _find() {
-    for (final list in [
-      MockSections.flutterFundamentals,
-      MockSections.advancedFlutter,
-    ]) {
-      for (final s in list) {
-        if (s.id == widget.sectionId) return s;
-      }
-    }
-    return null;
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final p = context.read<InstructorCourseProvider>();
+    final ok = await p.updateSection(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Section updated (mock).');
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Section updated.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Could not update section.',
+      );
+    }
   }
 
   Future<void> _delete() async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete section?',
-      message:
-      'All lessons in this section will be removed. This cannot be undone.',
+      message: 'All lessons will be removed. This cannot be undone.',
       confirmLabel: 'Delete',
       isDestructive: true,
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    AppSnackbar.showInfo(
-      context,
-      'Delete will call the backend in Phase 2.',
+    final p = context.read<InstructorCourseProvider>();
+    final ok = await p.deleteSection(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
     );
-    Navigator.of(context).pop();
+    if (!mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Section deleted.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Could not delete section.',
+      );
+    }
   }
 
   @override
@@ -89,10 +110,8 @@ class _InstructorEditSectionPageState
         title: const Text('Edit Section'),
         actions: [
           IconButton(
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: AppColors.danger,
-            ),
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
             tooltip: 'Delete',
             onPressed: _delete,
           ),
@@ -124,7 +143,7 @@ class _InstructorEditSectionPageState
                 label: 'Save Changes',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),

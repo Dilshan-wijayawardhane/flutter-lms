@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_section.dart';
+import '../../../student/data/models/section.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
 class InstructorReorderSectionsPage extends StatefulWidget {
   const InstructorReorderSectionsPage({
@@ -23,13 +24,17 @@ class InstructorReorderSectionsPage extends StatefulWidget {
 
 class _InstructorReorderSectionsPageState
     extends State<InstructorReorderSectionsPage> {
-  late List<MockSection> _items;
+  late List<CourseSection> _items;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _items = List.of(MockSections.byCourse(widget.courseId));
+    _items = List.of(
+      context.read<InstructorCourseProvider>().sectionsFor(
+        widget.courseId,
+      ),
+    );
   }
 
   void _onReorder(int oldIndex, int newIndex) {
@@ -42,11 +47,22 @@ class _InstructorReorderSectionsPageState
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final p = context.read<InstructorCourseProvider>();
+    final ok = await p.reorderSections(
+      courseId: widget.courseId,
+      orderedIds: _items.map((s) => s.id).toList(),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Order saved (mock).');
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Order saved.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Could not save order.',
+      );
+    }
   }
 
   @override
@@ -61,18 +77,15 @@ class _InstructorReorderSectionsPageState
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               color: AppColors.primarySurface,
-              child: Row(
+              child: const Row(
                 children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
+                  Icon(Icons.info_outline_rounded,
+                      color: AppColors.primary),
+                  SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Drag to reorder. Order will be saved to the backend '
-                          'in the integration phase.',
-                      style: AppTextStyles.bodySmall,
+                      'Drag to reorder. Save to apply.',
+                      style: TextStyle(fontSize: 13),
                     ),
                   ),
                 ],
@@ -97,7 +110,7 @@ class _InstructorReorderSectionsPageState
                   label: 'Save Order',
                   icon: Icons.save_outlined,
                   isLoading: _saving,
-                  onPressed: _save,
+                  onPressed: _saving ? null : _save,
                 ),
               ),
             ),
@@ -107,7 +120,7 @@ class _InstructorReorderSectionsPageState
     );
   }
 
-  Widget _tile(MockSection s, int index) {
+  Widget _tile(CourseSection s, int index) {
     return Container(
       key: ValueKey(s.id),
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -127,11 +140,9 @@ class _InstructorReorderSectionsPageState
               color: AppColors.primarySurface,
               borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
             ),
-            child: Text(
-              '${index + 1}',
-              style: AppTextStyles.labelLarge
-                  .copyWith(color: AppColors.primary),
-            ),
+            child: Text('${index + 1}',
+                style: AppTextStyles.labelLarge
+                    .copyWith(color: AppColors.primary)),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
@@ -145,10 +156,8 @@ class _InstructorReorderSectionsPageState
               ],
             ),
           ),
-          const Icon(
-            Icons.drag_handle_rounded,
-            color: AppColors.textTertiary,
-          ),
+          const Icon(Icons.drag_handle_rounded,
+              color: AppColors.textTertiary),
         ],
       ),
     );

@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_empty_state.dart';
-import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_reviews.dart';
-import '../../../../mock_data/models/mock_review.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../student/data/models/review.dart';
+import '../../providers/instructor_learner_provider.dart';
 
 class InstructorReviewsPage extends StatefulWidget {
-  const InstructorReviewsPage({super.key, this.courseId});
+  const InstructorReviewsPage({super.key, required this.courseId});
 
-  final String? courseId;
+  final String courseId;
 
   @override
   State<InstructorReviewsPage> createState() =>
@@ -22,51 +24,68 @@ class InstructorReviewsPage extends StatefulWidget {
 }
 
 class _InstructorReviewsPageState extends State<InstructorReviewsPage> {
-  late List<MockReview> _reviews;
-
   @override
   void initState() {
     super.initState();
-    _reviews = widget.courseId == null
-        ? List.of(MockReviews.all)
-        : List.of(MockReviews.byCourse(widget.courseId!));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context
+          .read<InstructorLearnerProvider>()
+          .loadReviews(widget.courseId);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = context.watch<InstructorLearnerProvider>();
+    final state = p.reviewsStateFor(widget.courseId);
+    final reviews = p.reviewsFor(widget.courseId);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Reviews')),
       body: SafeArea(
         top: false,
-        child: _reviews.isEmpty
+        child: state == LoadState.loading && reviews.isEmpty
+            ? const AppLoading(message: 'Loading reviews…')
+            : state == LoadState.error && reviews.isEmpty
+            ? AppErrorState(
+          title: 'Could not load reviews',
+          message: 'Please try again.',
+          onRetry: () => p.loadReviews(widget.courseId,
+              force: true),
+        )
+            : reviews.isEmpty
             ? const AppEmptyState(
           icon: Icons.rate_review_outlined,
           title: 'No reviews yet',
           message:
           'Reviews from your students will appear here.',
         )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: _reviews.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) => _reviewCard(_reviews[i]),
+            : RefreshIndicator(
+          onRefresh: () => p.loadReviews(
+            widget.courseId,
+            force: true,
+          ),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            itemCount: reviews.length,
+            separatorBuilder: (_, __) =>
+            const SizedBox(height: AppSpacing.sm),
+            itemBuilder: (_, i) =>
+                _reviewCard(reviews[i]),
+          ),
         ),
       ),
     );
   }
 
-  Widget _reviewCard(MockReview r) {
-    final hidden = r.visibility == ReviewVisibility.hidden;
+  Widget _reviewCard(CourseReview r) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(
-          color: hidden ? AppColors.border : AppColors.border,
-        ),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,16 +102,12 @@ class _InstructorReviewsPageState extends State<InstructorReviewsPage> {
                         style: AppTextStyles.labelLarge),
                     const SizedBox(height: 2),
                     Text(
-                      '${r.courseName} · ${Formatters.relative(r.createdAt)}',
+                      Formatters.relative(r.createdAt),
                       style: AppTextStyles.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              if (hidden)
-                const AppStatusChip(status: AppStatus.inactive),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -110,26 +125,6 @@ class _InstructorReviewsPageState extends State<InstructorReviewsPage> {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(r.comment, style: AppTextStyles.bodySmall),
-          const Divider(height: AppSpacing.lg),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () {
-                  AppSnackbar.showInfo(
-                    context,
-                    'Reply will arrive with backend integration.',
-                  );
-                },
-                icon: const Icon(Icons.reply_rounded, size: 18),
-                label: const Text('Reply'),
-              ),
-              const Spacer(),
-              Text(
-                hidden ? 'Hidden from students' : 'Visible to students',
-                style: AppTextStyles.caption,
-              ),
-            ],
-          ),
         ],
       ),
     );

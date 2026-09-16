@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_search_bar.dart';
-import '../../../../mock_data/models/mock_enrollment.dart';
+import '../../../student/data/models/enrollment.dart';
+import '../../providers/instructor_course_provider.dart';
+import '../../providers/instructor_learner_provider.dart';
 import '../widgets/learner_card.dart';
 
 class InstructorEnrollmentsPage extends StatefulWidget {
-  const InstructorEnrollmentsPage({super.key});
+  const InstructorEnrollmentsPage({super.key, this.courseId});
+
+  final String? courseId;
 
   @override
   State<InstructorEnrollmentsPage> createState() =>
@@ -23,69 +31,25 @@ class _InstructorEnrollmentsPageState
   String _query = '';
   int _filter = 0; // 0=All, 1=In Progress, 2=Completed
 
-  // Local mock enrollments. In Phase 2, this becomes an API call.
-  late final List<MockEnrollment> _all = [
-    MockEnrollment(
-      id: 'enrollment_001',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_001',
-      studentName: 'Aisha Rahman',
-      status: EnrollmentStatus.active,
-      progressPercent: 45,
-      enrolledAt: DateTime(2025, 3, 1),
-      lastAccessedAt: DateTime.now().subtract(const Duration(hours: 3)),
-      completedLessonCount: 11,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_002',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_002',
-      studentName: 'Daniel Okafor',
-      status: EnrollmentStatus.active,
-      progressPercent: 72,
-      enrolledAt: DateTime(2025, 2, 20),
-      lastAccessedAt: DateTime.now().subtract(const Duration(days: 1)),
-      completedLessonCount: 17,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_003',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_003',
-      studentName: 'Mai Tanaka',
-      status: EnrollmentStatus.completed,
-      progressPercent: 100,
-      enrolledAt: DateTime(2025, 1, 15),
-      lastAccessedAt: DateTime.now().subtract(const Duration(days: 4)),
-      completedLessonCount: 24,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_004',
-      courseId: 'course_002',
-      courseName: 'Advanced Flutter Architecture',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_001',
-      studentName: 'Aisha Rahman',
-      status: EnrollmentStatus.active,
-      progressPercent: 12,
-      enrolledAt: DateTime(2025, 3, 10),
-      lastAccessedAt: DateTime.now().subtract(const Duration(hours: 8)),
-      completedLessonCount: 5,
-      totalLessonCount: 38,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final courses = context.read<InstructorCourseProvider>();
+      if (courses.listState != LoadState.success) {
+        courses.loadMyCourses();
+      }
+      final id = widget.courseId ?? _firstCourseId();
+      if (id != null) {
+        context.read<InstructorLearnerProvider>().loadEnrollments(id);
+      }
+    });
+  }
+
+  String? _firstCourseId() {
+    final list = context.read<InstructorCourseProvider>().courses;
+    return list.isEmpty ? null : list.first.id;
+  }
 
   @override
   void dispose() {
@@ -93,10 +57,12 @@ class _InstructorEnrollmentsPageState
     super.dispose();
   }
 
-  List<MockEnrollment> get _filtered {
-    return _all.where((e) {
+  List<Enrollment> _filtered(List<Enrollment> all) {
+    return all.where((e) {
       final matchesQuery = _query.isEmpty ||
-          e.studentName.toLowerCase().contains(_query.toLowerCase()) ||
+          (e.studentName ?? e.studentId)
+              .toLowerCase()
+              .contains(_query.toLowerCase()) ||
           e.courseName.toLowerCase().contains(_query.toLowerCase());
       final matchesFilter = switch (_filter) {
         1 => e.status == EnrollmentStatus.active,
@@ -109,13 +75,24 @@ class _InstructorEnrollmentsPageState
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final p = context.watch<InstructorLearnerProvider>();
+    final courses = context.watch<InstructorCourseProvider>().courses;
+    final courseId = widget.courseId ??
+        (courses.isEmpty ? null : courses.first.id);
+
+    // Trigger loading when courseId is available and we haven't loaded yet.
+    if (courseId != null &&
+        p.enrollStateFor(courseId) == LoadState.initial) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        p.loadEnrollments(courseId);
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Learners'),
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: widget.courseId != null,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(44),
           child: Padding(
@@ -136,7 +113,13 @@ class _InstructorEnrollmentsPageState
       ),
       body: SafeArea(
         top: false,
-        child: Column(
+        child: courseId == null
+            ? const AppEmptyState(
+          icon: Icons.people_alt_outlined,
+          title: 'No courses yet',
+          message: 'Create a course to see learners here.',
+        )
+            : Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -151,39 +134,59 @@ class _InstructorEnrollmentsPageState
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),
-            Expanded(
-              child: list.isEmpty
-                  ? const AppEmptyState(
-                icon: Icons.people_alt_outlined,
-                title: 'No learners found',
-                message:
-                'Try a different search or filter to see '
-                    'enrollments.',
-              )
-                  : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  0,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                ),
-                itemCount: list.length,
-                separatorBuilder: (_, __) =>
-                const SizedBox(height: AppSpacing.sm),
-                itemBuilder: (_, i) {
-                  final e = list[i];
-                  return LearnerCard(
-                    enrollment: e,
-                    onTap: () => Navigator.of(context).pushNamed(
-                      AppRoutes.instructorLearnerDetails,
-                      arguments: e.id,
-                    ),
-                  );
-                },
-              ),
-            ),
+            Expanded(child: _body(p, courseId)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _body(InstructorLearnerProvider p, String courseId) {
+    final state = p.enrollStateFor(courseId);
+    final all = p.enrollmentsFor(courseId);
+
+    if (state == LoadState.loading && all.isEmpty) {
+      return const AppLoading(message: 'Loading learners…');
+    }
+    if (state == LoadState.error && all.isEmpty) {
+      return AppErrorState(
+        title: 'Could not load learners',
+        message: p.enrollErrorFor(courseId) ?? 'Please try again.',
+        onRetry: () => p.loadEnrollments(courseId, force: true),
+      );
+    }
+
+    final list = _filtered(all);
+    if (list.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.people_alt_outlined,
+        title: 'No learners found',
+        message: 'Try a different search or filter to see enrollments.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => p.loadEnrollments(courseId, force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.lg,
+        ),
+        itemCount: list.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) {
+          final e = list[i];
+          return LearnerCard(
+            enrollment: e,
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.instructorLearnerDetails,
+              arguments: e.id,
+            ),
+          );
+        },
       ),
     );
   }

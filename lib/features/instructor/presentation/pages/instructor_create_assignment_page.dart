@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -8,8 +9,7 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../core/widgets/file_picker_field.dart';
-import '../../../../core/widgets/selected_file_card.dart';
+import '../../providers/instructor_assignment_provider.dart';
 
 class InstructorCreateAssignmentPage extends StatefulWidget {
   const InstructorCreateAssignmentPage({
@@ -34,8 +34,6 @@ class _InstructorCreateAssignmentPageState
   DateTime? _dueDate;
   bool _allowText = true;
   bool _allowFile = true;
-  String? _attachmentName;
-  String? _attachmentSize;
   bool _saving = false;
 
   @override
@@ -54,17 +52,7 @@ class _InstructorCreateAssignmentPageState
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (picked != null) {
-      setState(() => _dueDate = picked);
-    }
-  }
-
-  void _fakePickAttachment() {
-    setState(() {
-      _attachmentName =
-      'assignment_brief_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      _attachmentSize = '340KB';
-    });
+    if (picked != null) setState(() => _dueDate = picked);
   }
 
   Future<void> _save({bool publish = false}) async {
@@ -72,21 +60,40 @@ class _InstructorCreateAssignmentPageState
     if (!_allowText && !_allowFile) {
       AppSnackbar.showError(
         context,
-        'Enable at least one submission type (text or file).',
+        'Enable at least one submission type.',
       );
       return;
     }
+
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    final p = context.read<InstructorAssignmentProvider>();
+    final created = await p.createAssignment(
+      courseId: widget.courseId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      dueDate: _dueDate,
+      maxPoints: int.tryParse(_pointsCtrl.text.trim()) ?? 100,
+      allowTextSubmission: _allowText,
+      allowFileSubmission: _allowFile,
+      publish: publish,
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(
-      context,
-      publish
-          ? 'Assignment published (mock).'
-          : 'Assignment saved as draft (mock).',
-    );
-    Navigator.of(context).pop();
+
+    if (created != null) {
+      AppSnackbar.showSuccess(
+        context,
+        publish ? 'Assignment published.' : 'Saved as draft.',
+      );
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.listErrorFor(widget.courseId) ??
+            'Could not create assignment.',
+      );
+    }
   }
 
   @override
@@ -104,38 +111,30 @@ class _InstructorCreateAssignmentPageState
               AppTextField(
                 controller: _titleCtrl,
                 label: 'Assignment title',
-                hint: 'e.g., Build Your First Flutter App',
                 prefixIcon: Icons.title_rounded,
-                validator: (v) =>
-                    Validators.minLength(v, 3, field: 'Assignment title'),
+                validator: (v) => Validators.minLength(v, 3,
+                    field: 'Assignment title'),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _descCtrl,
                 label: 'Description',
-                hint:
-                'Explain what students should do and any requirements.',
                 maxLines: 6,
                 minLines: 4,
                 validator: (v) =>
                     Validators.minLength(v, 20, field: 'Description'),
               ),
               const SizedBox(height: AppSpacing.md),
-
               Row(
                 children: [
                   Expanded(
                     child: AppTextField(
                       controller: _pointsCtrl,
                       label: 'Max points',
-                      prefixIcon: Icons.emoji_events_outlined,
                       keyboardType: TextInputType.number,
                       validator: (v) {
-                        final parsed = int.tryParse(v ?? '');
-                        if (parsed == null || parsed <= 0) {
-                          return 'Enter a valid number';
-                        }
+                        final n = int.tryParse(v ?? '');
+                        if (n == null || n <= 0) return 'Invalid';
                         return null;
                       },
                     ),
@@ -161,18 +160,17 @@ class _InstructorCreateAssignmentPageState
                         ),
                         child: Row(
                           children: [
-                            const Icon(
-                              Icons.event_outlined,
-                              size: 18,
-                              color: AppColors.textSecondary,
-                            ),
+                            const Icon(Icons.event_outlined,
+                                size: 18,
+                                color: AppColors.textSecondary),
                             const SizedBox(width: AppSpacing.xs),
                             Expanded(
                               child: Text(
                                 _dueDate == null
                                     ? 'Due date'
                                     : Formatters.date(_dueDate),
-                                style: AppTextStyles.bodyMedium.copyWith(
+                                style: AppTextStyles.bodyMedium
+                                    .copyWith(
                                   color: _dueDate == null
                                       ? AppColors.textSecondary
                                       : AppColors.textPrimary,
@@ -189,51 +187,18 @@ class _InstructorCreateAssignmentPageState
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
-
               Text('Submission options',
                   style: AppTextStyles.headingSmall),
-              const SizedBox(height: AppSpacing.xs),
-              _switchRow(
-                title: 'Allow text submission',
-                value: _allowText,
-                onChanged: (v) => setState(() => _allowText = v),
-              ),
-              _switchRow(
-                title: 'Allow file submission',
-                value: _allowFile,
-                onChanged: (v) => setState(() => _allowFile = v),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              Text('Attachment (optional)',
-                  style: AppTextStyles.headingSmall),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Attach a brief or resource file for students.',
-                style: AppTextStyles.caption,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              if (_attachmentName == null)
-                FilePickerField(
-                  title: 'Attach file',
-                  onPickRequested: _fakePickAttachment,
-                )
-              else
-                SelectedFileCard(
-                  fileName: _attachmentName!,
-                  fileSizeLabel: _attachmentSize,
-                  onRemove: () => setState(() {
-                    _attachmentName = null;
-                    _attachmentSize = null;
-                  }),
-                ),
-
+              _switchRow('Allow text submission', _allowText,
+                      (v) => setState(() => _allowText = v)),
+              _switchRow('Allow file submission', _allowFile,
+                      (v) => setState(() => _allowFile = v)),
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save as Draft',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: () => _save(publish: false),
+                onPressed: _saving ? null : () => _save(publish: false),
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -248,11 +213,11 @@ class _InstructorCreateAssignmentPageState
     );
   }
 
-  Widget _switchRow({
-    required String title,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
+  Widget _switchRow(
+      String title,
+      bool value,
+      ValueChanged<bool> onChanged,
+      ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -263,7 +228,7 @@ class _InstructorCreateAssignmentPageState
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),

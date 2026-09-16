@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -6,7 +7,9 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_enrollment.dart';
+import '../../../student/data/models/enrollment.dart';
+import '../../providers/instructor_course_provider.dart';
+import '../../providers/instructor_learner_provider.dart';
 
 class InstructorLearnerDetailsPage extends StatelessWidget {
   const InstructorLearnerDetailsPage({
@@ -18,13 +21,29 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final e = _find();
+    final enrollments = context.watch<InstructorLearnerProvider>();
+    final courses =
+        context.watch<InstructorCourseProvider>().courses;
+
+    Enrollment? e;
+    for (final c in courses) {
+      for (final x in enrollments.enrollmentsFor(c.id)) {
+        if (x.id == enrollmentId) {
+          e = x;
+          break;
+        }
+      }
+      if (e != null) break;
+    }
+
     if (e == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Enrollment not found')),
       );
     }
+
+    final name = e.studentName ?? e.studentId;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -34,30 +53,20 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            _header(e),
+            _header(name, e),
             const SizedBox(height: AppSpacing.lg),
-            _sectionTitle('Progress'),
+            Text('Progress', style: AppTextStyles.headingSmall),
             const SizedBox(height: AppSpacing.xs),
             _progressCard(e),
             const SizedBox(height: AppSpacing.lg),
-            _sectionTitle('Enrollment'),
+            Text('Enrollment', style: AppTextStyles.headingSmall),
             const SizedBox(height: AppSpacing.xs),
             _infoCard([
               _infoRow('Course', e.courseName),
               _infoRow('Enrolled', Formatters.date(e.enrolledAt)),
-              _infoRow(
-                'Last accessed',
-                Formatters.relative(e.lastAccessedAt),
-              ),
-              _infoRow('Status', e.status.label),
-            ]),
-            const SizedBox(height: AppSpacing.lg),
-            _sectionTitle('Activity'),
-            const SizedBox(height: AppSpacing.xs),
-            _infoCard([
-              _infoRow('Lessons completed',
-                  '${e.completedLessonCount}/${e.totalLessonCount}'),
-              _infoRow('Progress', '${e.progressPercent}%'),
+              _infoRow('Last accessed',
+                  Formatters.relative(e.lastAccessedAt)),
+              _infoRow('Status', e.status.name.toUpperCase()),
             ]),
           ],
         ),
@@ -65,84 +74,7 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
     );
   }
 
-  MockEnrollment? _find() {
-    // In Phase 2, this comes from the backend. For now, we synthesize from
-    // the same local data used on the list page.
-    final list = _samples();
-    for (final e in list) {
-      if (e.id == enrollmentId) return e;
-    }
-    return null;
-  }
-
-  List<MockEnrollment> _samples() => [
-    MockEnrollment(
-      id: 'enrollment_001',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_001',
-      studentName: 'Aisha Rahman',
-      status: EnrollmentStatus.active,
-      progressPercent: 45,
-      enrolledAt: DateTime(2025, 3, 1),
-      lastAccessedAt:
-      DateTime.now().subtract(const Duration(hours: 3)),
-      completedLessonCount: 11,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_002',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_002',
-      studentName: 'Daniel Okafor',
-      status: EnrollmentStatus.active,
-      progressPercent: 72,
-      enrolledAt: DateTime(2025, 2, 20),
-      lastAccessedAt:
-      DateTime.now().subtract(const Duration(days: 1)),
-      completedLessonCount: 17,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_003',
-      courseId: 'course_001',
-      courseName: 'Flutter Fundamentals',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_003',
-      studentName: 'Mai Tanaka',
-      status: EnrollmentStatus.completed,
-      progressPercent: 100,
-      enrolledAt: DateTime(2025, 1, 15),
-      lastAccessedAt:
-      DateTime.now().subtract(const Duration(days: 4)),
-      completedLessonCount: 24,
-      totalLessonCount: 24,
-    ),
-    MockEnrollment(
-      id: 'enrollment_004',
-      courseId: 'course_002',
-      courseName: 'Advanced Flutter Architecture',
-      courseThumbnailUrl: null,
-      instructorName: 'Dr. Elena Petrov',
-      studentId: 'user_student_001',
-      studentName: 'Aisha Rahman',
-      status: EnrollmentStatus.active,
-      progressPercent: 12,
-      enrolledAt: DateTime(2025, 3, 10),
-      lastAccessedAt:
-      DateTime.now().subtract(const Duration(hours: 8)),
-      completedLessonCount: 5,
-      totalLessonCount: 38,
-    ),
-  ];
-
-  Widget _header(MockEnrollment e) {
+  Widget _header(String name, Enrollment e) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -152,21 +84,17 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          AppAvatar(name: e.studentName, size: 56, borderWidth: 2),
+          AppAvatar(name: name, size: 56, borderWidth: 2),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.studentName,
-                    style: AppTextStyles.headingSmall),
+                Text(name, style: AppTextStyles.headingSmall),
                 const SizedBox(height: 2),
                 Text(e.studentId, style: AppTextStyles.caption),
                 const SizedBox(height: 6),
-                if (e.status == EnrollmentStatus.completed)
-                  const AppStatusChip(status: AppStatus.active)
-                else
-                  const AppStatusChip(status: AppStatus.active),
+                const AppStatusChip(status: AppStatus.active),
               ],
             ),
           ),
@@ -175,7 +103,7 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
     );
   }
 
-  Widget _progressCard(MockEnrollment e) {
+  Widget _progressCard(Enrollment e) {
     final value = (e.progressPercent / 100).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -201,7 +129,8 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           ClipRRect(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+            borderRadius:
+            BorderRadius.circular(AppSpacing.radiusPill),
             child: LinearProgressIndicator(
               value: value,
               minHeight: 8,
@@ -212,17 +141,13 @@ class InstructorLearnerDetailsPage extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${e.completedLessonCount} of ${e.totalLessonCount} lessons '
-                'completed',
+            '${e.completedLessonCount} of ${e.totalLessonCount} lessons',
             style: AppTextStyles.caption,
           ),
         ],
       ),
     );
   }
-
-  Widget _sectionTitle(String title) =>
-      Text(title, style: AppTextStyles.headingSmall);
 
   Widget _infoCard(List<Widget> children) {
     return Container(

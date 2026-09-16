@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz.dart';
+import '../../../student/data/models/quiz.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
 class InstructorQuizzesPage extends StatefulWidget {
   const InstructorQuizzesPage({super.key, required this.courseId});
@@ -22,49 +26,57 @@ class InstructorQuizzesPage extends StatefulWidget {
 }
 
 class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
-  int _tab = 0; // 0=All, 1=Draft, 2=Published
-  late List<MockQuiz> _quizzes;
+  int _tab = 0;
 
   @override
   void initState() {
     super.initState();
-    _quizzes = List.of(MockQuizzes.byCourse(widget.courseId));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InstructorQuizProvider>().loadQuizzes(widget.courseId);
+    });
   }
 
-  List<MockQuiz> get _filtered {
+  List<Quiz> _filtered(InstructorQuizProvider p) {
+    final list = p.quizzesFor(widget.courseId);
     switch (_tab) {
       case 1:
-        return _quizzes
-            .where((q) => q.status == QuizStatus.draft)
-            .toList();
+        return list.where((q) => q.status == QuizStatus.draft).toList();
       case 2:
-        return _quizzes
+        return list
             .where((q) => q.status == QuizStatus.published)
             .toList();
       default:
-        return _quizzes;
+        return list;
     }
   }
 
-  Future<void> _delete(MockQuiz quiz) async {
+  Future<void> _delete(Quiz q) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete quiz?',
       message:
-      '"${quiz.title}" and all of its questions and attempts will be '
-          'removed. This cannot be undone.',
+      '"${q.title}" and all its questions and attempts will be removed.',
       confirmLabel: 'Delete',
       isDestructive: true,
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    setState(() => _quizzes.removeWhere((q) => q.id == quiz.id));
-    AppSnackbar.showSuccess(context, 'Quiz deleted (mock).');
+
+    final ok = await context.read<InstructorQuizProvider>().deleteQuiz(
+      courseId: widget.courseId,
+      quizId: q.id,
+    );
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Quiz deleted.' : 'Could not delete.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final provider = context.watch<InstructorQuizProvider>();
+    final state = provider.listStateFor(widget.courseId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -90,25 +102,21 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
       ),
       body: SafeArea(
         top: false,
-        child: list.isEmpty
-            ? AppEmptyState(
-          icon: Icons.quiz_outlined,
-          title: _emptyTitle,
+        child: state == LoadState.loading &&
+            provider.quizzesFor(widget.courseId).isEmpty
+            ? const AppLoading(message: 'Loading quizzes…')
+            : state == LoadState.error
+            ? AppErrorState(
+          title: 'Could not load quizzes',
           message:
-          "Create a quiz to assess your students' understanding.",
-          actionLabel: 'Create Quiz',
-          onAction: () => Navigator.of(context).pushNamed(
-            AppRoutes.instructorCreateQuiz,
-            arguments: widget.courseId,
+          provider.listErrorFor(widget.courseId) ??
+              'Please try again.',
+          onRetry: () => provider.loadQuizzes(
+            widget.courseId,
+            force: true,
           ),
         )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: list.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) => _quizCard(list[i]),
-        ),
+            : _body(provider),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed(
@@ -121,18 +129,35 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
     );
   }
 
-  String get _emptyTitle {
-    switch (_tab) {
-      case 1:
-        return 'No draft quizzes';
-      case 2:
-        return 'No published quizzes';
-      default:
-        return 'No quizzes yet';
+  Widget _body(InstructorQuizProvider provider) {
+    final list = _filtered(provider);
+    if (list.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.quiz_outlined,
+        title: 'No quizzes yet',
+        message: 'Create a quiz to assess your students.',
+        actionLabel: 'Create Quiz',
+        onAction: () => Navigator.of(context).pushNamed(
+          AppRoutes.instructorCreateQuiz,
+          arguments: widget.courseId,
+        ),
+      );
     }
+
+    return RefreshIndicator(
+      onRefresh: () =>
+          provider.loadQuizzes(widget.courseId, force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: list.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) => _card(provider, list[i]),
+      ),
+    );
   }
 
-  Widget _quizCard(MockQuiz quiz) {
+  Widget _card(InstructorQuizProvider provider, Quiz q) {
     return Material(
       color: AppColors.card,
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -140,7 +165,10 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         onTap: () => Navigator.of(context).pushNamed(
           AppRoutes.instructorQuestions,
-          arguments: quiz.id,
+          arguments: {
+            'courseId': widget.courseId,
+            'quizId': q.id,
+          },
         ),
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -154,43 +182,28 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      quiz.title,
-                      style: AppTextStyles.headingSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(q.title,
+                        style: AppTextStyles.headingSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
                   ),
                   const SizedBox(width: AppSpacing.xs),
-                  if (quiz.status == QuizStatus.published)
+                  if (q.status == QuizStatus.published)
                     const AppStatusChip(status: AppStatus.published)
                   else
                     const AppStatusChip(status: AppStatus.draft),
                 ],
               ),
-              if (quiz.description != null &&
-                  quiz.description!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  quiz.description!,
-                  style: AppTextStyles.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.xs),
               Wrap(
                 spacing: AppSpacing.sm,
                 runSpacing: AppSpacing.xs,
                 children: [
                   _meta(Icons.help_outline_rounded,
-                      '${quiz.questionCount} questions'),
-                  _meta(Icons.timer_outlined,
-                      '${quiz.durationMinutes} min'),
+                      '${q.questionCount} questions'),
+                  _meta(Icons.timer_outlined, '${q.durationMinutes} min'),
                   _meta(Icons.flag_outlined,
-                      'Pass ${quiz.passingScore}%'),
-                  _meta(Icons.repeat_rounded,
-                      '${quiz.maxAttempts} attempts'),
+                      'Pass ${q.passingScore}%'),
                 ],
               ),
               const Divider(height: AppSpacing.lg),
@@ -199,7 +212,10 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
                   TextButton.icon(
                     onPressed: () => Navigator.of(context).pushNamed(
                       AppRoutes.instructorEditQuiz,
-                      arguments: quiz.id,
+                      arguments: {
+                        'courseId': widget.courseId,
+                        'quizId': q.id,
+                      },
                     ),
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     label: const Text('Edit'),
@@ -207,18 +223,16 @@ class _InstructorQuizzesPageState extends State<InstructorQuizzesPage> {
                   TextButton.icon(
                     onPressed: () => Navigator.of(context).pushNamed(
                       AppRoutes.instructorQuizAttempts,
-                      arguments: quiz.id,
+                      arguments: q.id,
                     ),
                     icon: const Icon(Icons.history_rounded, size: 18),
                     label: const Text('Attempts'),
                   ),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => _delete(quiz),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: AppColors.danger,
-                    ),
+                    onPressed: () => _delete(q),
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        color: AppColors.danger),
                     tooltip: 'Delete',
                   ),
                 ],

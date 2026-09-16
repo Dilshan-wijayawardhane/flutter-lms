@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -6,6 +7,7 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
 class InstructorCreateSectionPage extends StatefulWidget {
   const InstructorCreateSectionPage({
@@ -37,11 +39,26 @@ class _InstructorCreateSectionPageState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+
+    final p = context.read<InstructorCourseProvider>();
+    final s = await p.createSection(
+      courseId: widget.courseId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Section created (mock).');
-    Navigator.of(context).pop();
+
+    if (s != null) {
+      AppSnackbar.showSuccess(context, 'Section created.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Could not create section.',
+      );
+    }
   }
 
   @override
@@ -68,7 +85,6 @@ class _InstructorCreateSectionPageState
               AppTextField(
                 controller: _descCtrl,
                 label: 'Description (optional)',
-                hint: 'What will students learn in this section?',
                 maxLines: 3,
                 minLines: 2,
               ),
@@ -77,7 +93,7 @@ class _InstructorCreateSectionPageState
                 label: 'Create Section',
                 icon: Icons.check_rounded,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -7,13 +8,16 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../providers/instructor_quiz_provider.dart';
 
 class InstructorCreateQuestionPage extends StatefulWidget {
   const InstructorCreateQuestionPage({
     super.key,
+    required this.courseId,
     required this.quizId,
   });
 
+  final String courseId;
   final String quizId;
 
   @override
@@ -62,11 +66,33 @@ class _InstructorCreateQuestionPageState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+
+    final options = _optionCtrls
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    final p = context.read<InstructorQuizProvider>();
+    final created = await p.createQuestion(
+      quizId: widget.quizId,
+      text: _questionCtrl.text.trim(),
+      options: options,
+      correctOptionIndex: _correctIndex,
+      points: int.tryParse(_pointsCtrl.text.trim()) ?? 10,
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Question created (mock).');
-    Navigator.of(context).pop();
+
+    if (created != null) {
+      AppSnackbar.showSuccess(context, 'Question created.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        'Could not create question.',
+      );
+    }
   }
 
   @override
@@ -84,7 +110,6 @@ class _InstructorCreateQuestionPageState
               AppTextField(
                 controller: _questionCtrl,
                 label: 'Question',
-                hint: 'e.g., Which widget lays out children vertically?',
                 maxLines: 4,
                 minLines: 2,
                 validator: (v) =>
@@ -97,23 +122,17 @@ class _InstructorCreateQuestionPageState
                 prefixIcon: Icons.emoji_events_outlined,
                 keyboardType: TextInputType.number,
                 validator: (v) {
-                  final parsed = int.tryParse(v ?? '');
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter a valid number';
-                  }
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n <= 0) return 'Enter a valid number';
                   return null;
                 },
               ),
               const SizedBox(height: AppSpacing.lg),
-
               Text('Options', style: AppTextStyles.headingSmall),
               const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Tap the circle next to the correct answer.',
-                style: AppTextStyles.caption,
-              ),
+              Text('Tap the circle next to the correct answer.',
+                  style: AppTextStyles.caption),
               const SizedBox(height: AppSpacing.sm),
-
               ...List.generate(_optionCtrls.length, (i) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -153,10 +172,12 @@ class _InstructorCreateQuestionPageState
                       Expanded(
                         child: AppTextField(
                           controller: _optionCtrls[i],
-                          label: 'Option ${String.fromCharCode(65 + i)}',
+                          label:
+                          'Option ${String.fromCharCode(65 + i)}',
                           validator: (v) => Validators.required(
                             v,
-                            field: 'Option ${String.fromCharCode(65 + i)}',
+                            field:
+                            'Option ${String.fromCharCode(65 + i)}',
                           ),
                         ),
                       ),
@@ -175,20 +196,18 @@ class _InstructorCreateQuestionPageState
                   ),
                 );
               }),
-
               if (_optionCtrls.length < 6)
                 OutlinedButton.icon(
                   onPressed: _addOption,
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add option'),
                 ),
-
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Create Question',
                 icon: Icons.check_rounded,
                 isLoading: _saving,
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
             ],
           ),

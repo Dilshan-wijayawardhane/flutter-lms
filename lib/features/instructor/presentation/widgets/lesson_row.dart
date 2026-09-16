@@ -5,10 +5,8 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_lesson.dart';
+import '../../../student/data/models/lesson.dart';
 
-/// Row used on the instructor lessons list.
-/// Shows type icon, order, title, duration, and status chip.
 class InstructorLessonRow extends StatelessWidget {
   const InstructorLessonRow({
     super.key,
@@ -18,7 +16,7 @@ class InstructorLessonRow extends StatelessWidget {
     this.onDelete,
   });
 
-  final MockLesson lesson;
+  final Lesson lesson;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
@@ -48,11 +46,8 @@ class InstructorLessonRow extends StatelessWidget {
                   borderRadius:
                   BorderRadius.circular(AppSpacing.radiusSm),
                 ),
-                child: Icon(
-                  _typeIcon(lesson.type),
-                  size: 20,
-                  color: _typeColor(lesson.type),
-                ),
+                child: Icon(_typeIcon(lesson.type),
+                    size: 20, color: _typeColor(lesson.type)),
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
@@ -76,10 +71,8 @@ class InstructorLessonRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Text(
-                          lesson.type.label,
-                          style: AppTextStyles.caption,
-                        ),
+                        Text(lesson.type.name.toUpperCase(),
+                            style: AppTextStyles.caption),
                         const SizedBox(width: AppSpacing.xs),
                         Text('·', style: AppTextStyles.caption),
                         const SizedBox(width: AppSpacing.xs),
@@ -100,11 +93,8 @@ class InstructorLessonRow extends StatelessWidget {
                 ),
               if (onDelete != null)
                 IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline_rounded,
-                    size: 18,
-                    color: AppColors.danger,
-                  ),
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      size: 18, color: AppColors.danger),
                   tooltip: 'Delete',
                   onPressed: onDelete,
                 ),
@@ -121,9 +111,7 @@ class InstructorLessonRow extends StatelessWidget {
         return const AppStatusChip(status: AppStatus.draft, dense: true);
       case LessonStatus.published:
         return const AppStatusChip(
-          status: AppStatus.published,
-          dense: true,
-        );
+            status: AppStatus.published, dense: true);
     }
   }
 

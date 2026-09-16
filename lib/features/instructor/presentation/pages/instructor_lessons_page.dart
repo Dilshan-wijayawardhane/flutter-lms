@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_lesson.dart';
-import '../../../../mock_data/models/mock_section.dart';
+import '../../../student/data/models/lesson.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 import '../widgets/lesson_row.dart';
 
 class InstructorLessonsPage extends StatefulWidget {
-  const InstructorLessonsPage({super.key, required this.sectionId});
+  const InstructorLessonsPage({
+    super.key,
+    required this.courseId,
+    required this.sectionId,
+  });
 
+  final String courseId;
   final String sectionId;
 
   @override
@@ -23,29 +29,17 @@ class InstructorLessonsPage extends StatefulWidget {
 }
 
 class _InstructorLessonsPageState extends State<InstructorLessonsPage> {
-  MockSection? _section;
-  late List<MockLesson> _lessons;
-
   @override
   void initState() {
     super.initState();
-    _section = _findSection();
-    _lessons = List.of(MockLessons.bySection(widget.sectionId));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context
+          .read<InstructorCourseProvider>()
+          .loadSections(widget.courseId);
+    });
   }
 
-  MockSection? _findSection() {
-    for (final list in [
-      MockSections.flutterFundamentals,
-      MockSections.advancedFlutter,
-    ]) {
-      for (final s in list) {
-        if (s.id == widget.sectionId) return s;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _delete(MockLesson lesson) async {
+  Future<void> _delete(Lesson lesson) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete lesson?',
@@ -56,60 +50,81 @@ class _InstructorLessonsPageState extends State<InstructorLessonsPage> {
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    setState(() => _lessons.removeWhere((l) => l.id == lesson.id));
-    AppSnackbar.showSuccess(context, 'Lesson deleted (mock).');
+    final ok = await context.read<InstructorCourseProvider>().deleteLesson(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      lessonId: lesson.id,
+    );
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Lesson deleted.' : 'Could not delete.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final section = _section;
-    if (section == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Section not found')),
-      );
-    }
+    final p = context.watch<InstructorCourseProvider>();
+    final state = p.sectionsStateFor(widget.courseId);
+    final lessons = p.lessonsFor(widget.courseId, widget.sectionId);
+
+    final section = p
+        .sectionsFor(widget.courseId)
+        .where((s) => s.id == widget.sectionId)
+        .firstOrNull;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          section.title,
+          section?.title ?? 'Lessons',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
       ),
       body: SafeArea(
         top: false,
-        child: _lessons.isEmpty
+        child: state == LoadState.loading && lessons.isEmpty
+            ? const AppLoading(message: 'Loading lessons…')
+            : lessons.isEmpty
             ? AppEmptyState(
           icon: Icons.play_lesson_outlined,
           title: 'No lessons yet',
           message:
-          'Add your first lesson to this section. You can create '
-              'TEXT, VIDEO, or DOCUMENT lessons.',
+          'Add your first lesson. TEXT, VIDEO, and DOCUMENT types are supported.',
           actionLabel: 'Create Lesson',
           onAction: () => Navigator.of(context).pushNamed(
             AppRoutes.instructorCreateLesson,
-            arguments: widget.sectionId,
+            arguments: {
+              'courseId': widget.courseId,
+              'sectionId': widget.sectionId,
+            },
           ),
         )
             : ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: _lessons.length,
+          itemCount: lessons.length,
           separatorBuilder: (_, __) =>
           const SizedBox(height: AppSpacing.sm),
           itemBuilder: (_, i) {
-            final l = _lessons[i];
+            final l = lessons[i];
             return InstructorLessonRow(
               lesson: l,
               onTap: () => Navigator.of(context).pushNamed(
                 AppRoutes.instructorEditLesson,
-                arguments: l.id,
+                arguments: {
+                  'courseId': widget.courseId,
+                  'sectionId': widget.sectionId,
+                  'lessonId': l.id,
+                },
               ),
               onEdit: () => Navigator.of(context).pushNamed(
                 AppRoutes.instructorEditLesson,
-                arguments: l.id,
+                arguments: {
+                  'courseId': widget.courseId,
+                  'sectionId': widget.sectionId,
+                  'lessonId': l.id,
+                },
               ),
               onDelete: () => _delete(l),
             );
@@ -119,7 +134,10 @@ class _InstructorLessonsPageState extends State<InstructorLessonsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed(
           AppRoutes.instructorCreateLesson,
-          arguments: widget.sectionId,
+          arguments: {
+            'courseId': widget.courseId,
+            'sectionId': widget.sectionId,
+          },
         ),
         icon: const Icon(Icons.add_rounded),
         label: const Text('New Lesson'),

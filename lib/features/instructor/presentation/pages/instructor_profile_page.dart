@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -6,10 +7,29 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
-import '../../../../mock_data/mock_users.dart';
+import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../../student/providers/profile_provider.dart';
 
-class InstructorProfilePage extends StatelessWidget {
+class InstructorProfilePage extends StatefulWidget {
   const InstructorProfilePage({super.key});
+
+  @override
+  State<InstructorProfilePage> createState() =>
+      _InstructorProfilePageState();
+}
+
+class _InstructorProfilePageState extends State<InstructorProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<ProfileProvider>();
+      if (!p.hasProfile && !p.isLoading) p.load();
+    });
+  }
 
   Future<void> _logout(BuildContext context) async {
     final confirmed = await AppConfirmationDialog.show(
@@ -21,6 +41,9 @@ class InstructorProfilePage extends StatelessWidget {
       icon: Icons.logout_rounded,
     );
     if (!confirmed || !context.mounted) return;
+    await context.read<AuthProvider>().logout();
+    if (!context.mounted) return;
+    context.read<ProfileProvider>().clear();
     Navigator.of(context).pushNamedAndRemoveUntil(
       AppRoutes.login,
           (_) => false,
@@ -29,7 +52,7 @@ class InstructorProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = MockUsers.instructorProfile1;
+    final provider = context.watch<ProfileProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -39,81 +62,81 @@ class InstructorProfilePage extends StatelessWidget {
       ),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _headerCard(profile),
-            const SizedBox(height: AppSpacing.lg),
-
-            _statsCard(profile),
-            const SizedBox(height: AppSpacing.lg),
-
-            _group('Account', [
-              _item(
-                context,
-                icon: Icons.person_outline_rounded,
-                label: 'Edit profile',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorEditProfile),
-              ),
-              _item(
-                context,
-                icon: Icons.badge_outlined,
-                label: 'Account details',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorAccount),
-              ),
-              _item(
-                context,
-                icon: Icons.lock_outline_rounded,
-                label: 'Change password',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorChangePassword),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.md),
-
-            _group('Teaching', [
-              _item(
-                context,
-                icon: Icons.rate_review_outlined,
-                label: 'My course reviews',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorReviews),
-              ),
-              _item(
-                context,
-                icon: Icons.people_alt_outlined,
-                label: 'Learners',
-                onTap: () => Navigator.of(context)
-                    .pushNamed(AppRoutes.instructorEnrollments),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.md),
-
-            _group('Danger zone', [
-              _item(
-                context,
-                icon: Icons.logout_rounded,
-                label: 'Log out',
-                color: AppColors.danger,
-                onTap: () => _logout(context),
-              ),
-            ]),
-            const SizedBox(height: AppSpacing.lg),
-            Center(
-              child: Text(
-                'Version 0.1.0 · Phase 1 (UI only)',
-                style: AppTextStyles.caption,
-              ),
-            ),
-          ],
-        ),
+        child: provider.isLoading && !provider.hasProfile
+            ? const AppLoading(message: 'Loading profile…')
+            : provider.hasError && !provider.hasProfile
+            ? AppErrorState(
+          title: 'Could not load profile',
+          message: provider.errorMessage ?? 'Please try again.',
+          onRetry: () => provider.load(force: true),
+        )
+            : provider.profile == null
+            ? const AppEmptyState(
+          icon: Icons.person_outline_rounded,
+          title: 'No profile',
+          message: 'Your profile is not available.',
+        )
+            : _body(provider),
       ),
     );
   }
 
-  Widget _headerCard(dynamic profile) {
+  Widget _body(ProfileProvider provider) {
+    final p = provider.profile!;
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      children: [
+        _header(p),
+        const SizedBox(height: AppSpacing.lg),
+        _group('Account', [
+          _item(
+            context,
+            icon: Icons.badge_outlined,
+            label: 'Account details',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.instructorAccount),
+          ),
+          _item(
+            context,
+            icon: Icons.lock_outline_rounded,
+            label: 'Change password',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.instructorChangePassword),
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _group('Teaching', [
+          _item(
+            context,
+            icon: Icons.menu_book_outlined,
+            label: 'My courses',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.instructorCourses),
+          ),
+          _item(
+            context,
+            icon: Icons.people_alt_outlined,
+            label: 'Learners',
+            onTap: () => Navigator.of(context)
+                .pushNamed(AppRoutes.instructorEnrollments),
+          ),
+        ]),
+        const SizedBox(height: AppSpacing.md),
+        _group('Danger zone', [
+          _item(
+            context,
+            icon: Icons.logout_rounded,
+            label: 'Log out',
+            color: AppColors.danger,
+            onTap: () => _logout(context),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  Widget _header(profile) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -138,12 +161,8 @@ class InstructorProfilePage extends StatelessWidget {
                     style: AppTextStyles.headingSmall),
                 const SizedBox(height: 2),
                 if (profile.headline != null)
-                  Text(
-                    profile.headline!,
-                    style: AppTextStyles.caption,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(profile.headline!,
+                      style: AppTextStyles.caption),
                 const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -152,8 +171,9 @@ class InstructorProfilePage extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.primarySurface,
-                    borderRadius:
-                    BorderRadius.circular(AppSpacing.radiusPill),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.radiusPill,
+                    ),
                   ),
                   child: Text(
                     'INSTRUCTOR',
@@ -164,36 +184,6 @@ class InstructorProfilePage extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statsCard(dynamic profile) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          _stat('Courses', '${profile.totalCourses}'),
-          _stat('Learners', '${profile.totalLearners}'),
-          _stat('Rating', profile.averageRating.toStringAsFixed(1)),
-        ],
-      ),
-    );
-  }
-
-  Widget _stat(String label, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(value, style: AppTextStyles.headingSmall),
-          const SizedBox(height: 2),
-          Text(label, style: AppTextStyles.caption),
         ],
       ),
     );
@@ -248,11 +238,8 @@ class InstructorProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: AppColors.textTertiary,
-            ),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                size: 14, color: AppColors.textTertiary),
           ],
         ),
       ),

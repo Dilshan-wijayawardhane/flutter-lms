@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/app_button.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_empty_state.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../../student/data/models/course.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 import '../widgets/instructor_course_card.dart';
 
 class InstructorCoursesPage extends StatefulWidget {
@@ -19,35 +22,39 @@ class InstructorCoursesPage extends StatefulWidget {
 }
 
 class _InstructorCoursesPageState extends State<InstructorCoursesPage> {
-  static const _instructorId = 'user_instructor_001';
   int _tab = 0; // 0=All, 1=Draft, 2=Published, 3=Archived
 
-  List<MockCourse> get _myCourses =>
-      MockCourses.byInstructor(_instructorId);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final p = context.read<InstructorCourseProvider>();
+      if (p.listState != LoadState.success) p.loadMyCourses();
+    });
+  }
 
-  List<MockCourse> get _filtered {
-    final all = _myCourses;
+  List<Course> _filtered(InstructorCourseProvider p) {
     switch (_tab) {
-      case 0:
-        return all;
       case 1:
-        return all.where((c) => c.status == CourseStatus.draft).toList();
+        return p.courses
+            .where((c) => c.status == CourseStatus.draft)
+            .toList();
       case 2:
-        return all
+        return p.courses
             .where((c) => c.status == CourseStatus.published)
             .toList();
       case 3:
-        return all
+        return p.courses
             .where((c) => c.status == CourseStatus.archived)
             .toList();
       default:
-        return all;
+        return p.courses;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
+    final provider = context.watch<InstructorCourseProvider>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -85,39 +92,59 @@ class _InstructorCoursesPageState extends State<InstructorCoursesPage> {
           ),
         ),
       ),
-      body: SafeArea(
-        top: false,
-        child: list.isEmpty
-            ? AppEmptyState(
-          icon: Icons.menu_book_outlined,
-          title: _emptyTitle,
-          message: _emptyMessage,
-          actionLabel: 'Create Course',
-          onAction: () => Navigator.of(context)
-              .pushNamed(AppRoutes.instructorCreateCourse),
-        )
-            : ListView.separated(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: list.length,
-          separatorBuilder: (_, __) =>
-          const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) {
-            final c = list[i];
-            return InstructorCourseCard(
-              course: c,
-              onTap: () => Navigator.of(context).pushNamed(
-                AppRoutes.instructorCourseDetails,
-                arguments: c.id,
-              ),
-            );
-          },
-        ),
-      ),
+      body: SafeArea(top: false, child: _buildBody(provider)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context)
             .pushNamed(AppRoutes.instructorCreateCourse),
         icon: const Icon(Icons.add_rounded),
         label: const Text('New Course'),
+      ),
+    );
+  }
+
+  Widget _buildBody(InstructorCourseProvider provider) {
+    if (provider.listState == LoadState.loading &&
+        provider.courses.isEmpty) {
+      return const AppLoading(message: 'Loading your courses…');
+    }
+    if (provider.listState == LoadState.error &&
+        provider.courses.isEmpty) {
+      return AppErrorState(
+        title: 'Could not load your courses',
+        message: provider.errorMessage ?? 'Please try again.',
+        onRetry: () => provider.loadMyCourses(force: true),
+      );
+    }
+
+    final list = _filtered(provider);
+    if (list.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.menu_book_outlined,
+        title: _emptyTitle,
+        message: 'Create your first course to get started.',
+        actionLabel: 'Create Course',
+        onAction: () => Navigator.of(context)
+            .pushNamed(AppRoutes.instructorCreateCourse),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => provider.loadMyCourses(force: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        itemCount: list.length,
+        separatorBuilder: (_, __) =>
+        const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (_, i) {
+          final c = list[i];
+          return InstructorCourseCard(
+            course: c,
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.instructorCourseDetails,
+              arguments: c.id,
+            ),
+          );
+        },
       ),
     );
   }
@@ -135,19 +162,6 @@ class _InstructorCoursesPageState extends State<InstructorCoursesPage> {
     }
   }
 
-  String get _emptyMessage {
-    switch (_tab) {
-      case 1:
-        return 'Drafts you create will appear here.';
-      case 2:
-        return 'Publish a course to make it visible to students.';
-      case 3:
-        return 'Archived courses will appear here.';
-      default:
-        return 'Start by creating your first course.';
-    }
-  }
-
   Widget _chip(String label, int index) {
     final active = _tab == index;
     return GestureDetector(
@@ -157,7 +171,6 @@ class _InstructorCoursesPageState extends State<InstructorCoursesPage> {
           horizontal: AppSpacing.md,
           vertical: AppSpacing.xs,
         ),
-        alignment: Alignment.center,
         decoration: BoxDecoration(
           color:
           active ? AppColors.primary : AppColors.surfaceVariant,

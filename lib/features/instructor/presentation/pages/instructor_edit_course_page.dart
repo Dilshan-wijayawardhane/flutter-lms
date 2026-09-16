@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -11,10 +12,10 @@ import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/image_picker_field.dart';
-import '../../../../mock_data/mock_categories.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/models/mock_category.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/category.dart';
+import '../../../student/data/models/course.dart';
+import '../../../student/providers/category_provider.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
 class InstructorEditCoursePage extends StatefulWidget {
   const InstructorEditCoursePage({super.key, required this.courseId});
@@ -34,29 +35,28 @@ class _InstructorEditCoursePageState
   late final TextEditingController _descCtrl;
   late final TextEditingController _priceCtrl;
 
-  MockCourse? _course;
-  MockCategory? _category;
+  CourseCategory? _category;
   CourseLevel _level = CourseLevel.beginner;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _course = _find(widget.courseId);
-    final c = _course;
-    _titleCtrl = TextEditingController(text: c?.title ?? '');
-    _shortCtrl = TextEditingController(text: c?.shortDescription ?? '');
-    _descCtrl = TextEditingController(text: c?.description ?? '');
-    _priceCtrl = TextEditingController(
-      text: (c?.price ?? 0).toStringAsFixed(2),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CategoryProvider>().load();
+    });
+
+    final course = context.read<InstructorCourseProvider>().courseById(
+      widget.courseId,
     );
-    _level = c?.level ?? CourseLevel.beginner;
-    for (final cat in MockCategories.all) {
-      if (cat.id == c?.categoryId) {
-        _category = cat;
-        break;
-      }
-    }
+    _titleCtrl = TextEditingController(text: course?.title ?? '');
+    _shortCtrl =
+        TextEditingController(text: course?.shortDescription ?? '');
+    _descCtrl = TextEditingController(text: course?.description ?? '');
+    _priceCtrl = TextEditingController(
+      text: (course?.price ?? 0).toStringAsFixed(2),
+    );
+    _level = course?.level ?? CourseLevel.beginner;
   }
 
   @override
@@ -68,21 +68,44 @@ class _InstructorEditCoursePageState
     super.dispose();
   }
 
-  MockCourse? _find(String id) {
-    for (final c in MockCourses.all) {
-      if (c.id == id) return c;
-    }
-    return null;
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
-    await Future.delayed(const Duration(milliseconds: 700));
+
+    final provider = context.read<InstructorCourseProvider>();
+    final updated = await provider.updateCourse(
+      courseId: widget.courseId,
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      shortDescription: _shortCtrl.text.trim(),
+      categoryId: _category?.id,
+      level: _level,
+      price: double.tryParse(_priceCtrl.text.trim()),
+    );
+
     if (!mounted) return;
     setState(() => _isSaving = false);
-    AppSnackbar.showSuccess(context, 'Course updated (mock).');
-    Navigator.of(context).pop();
+
+    if (updated != null) {
+      AppSnackbar.showSuccess(context, 'Course updated.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        provider.errorMessage ?? 'Could not update course.',
+      );
+    }
+  }
+
+  Future<void> _publish() async {
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .publishCourse(widget.courseId);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course published.' : 'Could not publish.',
+    );
   }
 
   Future<void> _archive() async {
@@ -96,13 +119,46 @@ class _InstructorEditCoursePageState
       icon: Icons.archive_outlined,
     );
     if (!confirmed || !mounted) return;
-    AppSnackbar.showInfo(context, 'Archive will call the backend in Phase 2.');
+
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .archiveCourse(widget.courseId);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course archived.' : 'Could not archive.',
+    );
+    if (ok) Navigator.of(context).pop();
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await AppConfirmationDialog.show(
+      context,
+      title: 'Delete course?',
+      message:
+      'The course and all its content will be permanently removed.',
+      confirmLabel: 'Delete',
+      isDestructive: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!confirmed || !mounted) return;
+
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .deleteCourse(widget.courseId);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course deleted.' : 'Could not delete.',
+    );
+    if (ok) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = _course;
-    if (c == null) {
+    final provider = context.watch<InstructorCourseProvider>();
+    final course = provider.courseById(widget.courseId);
+    if (course == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Course not found')),
@@ -115,9 +171,10 @@ class _InstructorEditCoursePageState
         title: const Text('Edit Course'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            tooltip: 'Archive',
-            onPressed: _archive,
+            icon: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
+            tooltip: 'Delete',
+            onPressed: _delete,
           ),
         ],
       ),
@@ -128,23 +185,18 @@ class _InstructorEditCoursePageState
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              _statusRow(c),
+              _statusRow(course),
               const SizedBox(height: AppSpacing.md),
               ImagePickerField(
-                imageUrl: c.thumbnailUrl,
+                imageUrl: course.thumbnailUrl,
                 label: 'Course thumbnail',
                 height: 180,
                 onPickRequested: () => AppSnackbar.showInfo(
                   context,
-                  'Thumbnail picker arrives with backend integration.',
-                ),
-                onRemove: () => AppSnackbar.showInfo(
-                  context,
-                  'Remove thumbnail will call the backend in Phase 2.',
+                  'Thumbnail upload arrives with the upload phase.',
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
-
               AppTextField(
                 controller: _titleCtrl,
                 label: 'Course title',
@@ -153,16 +205,12 @@ class _InstructorEditCoursePageState
                     Validators.minLength(v, 5, field: 'Course title'),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _shortCtrl,
                 label: 'Short description',
                 maxLines: 2,
-                validator: (v) =>
-                    Validators.minLength(v, 8, field: 'Short description'),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _descCtrl,
                 label: 'Full description',
@@ -172,26 +220,23 @@ class _InstructorEditCoursePageState
                     Validators.minLength(v, 30, field: 'Description'),
               ),
               const SizedBox(height: AppSpacing.md),
-
-              AppDropdown<MockCategory>(
+              AppDropdown<CourseCategory>(
                 label: 'Category',
-                items: MockCategories.active,
+                items: context.watch<CategoryProvider>().categories,
                 value: _category,
                 labelBuilder: (c) => c.name,
                 onChanged: (c) => setState(() => _category = c),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppDropdown<CourseLevel>(
                 label: 'Level',
                 items: CourseLevel.values,
                 value: _level,
-                labelBuilder: (l) => l.label,
+                labelBuilder: (l) => l.name.toUpperCase(),
                 onChanged: (l) =>
                     setState(() => _level = l ?? CourseLevel.beginner),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _priceCtrl,
                 label: 'Price',
@@ -200,13 +245,25 @@ class _InstructorEditCoursePageState
                 const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: AppSpacing.xl),
-
               AppButton.primary(
                 label: 'Save Changes',
                 icon: Icons.save_outlined,
                 isLoading: _isSaving,
-                onPressed: _save,
+                onPressed: _isSaving ? null : _save,
               ),
+              const SizedBox(height: AppSpacing.sm),
+              if (course.status != CourseStatus.published)
+                AppButton.secondary(
+                  label: 'Publish Course',
+                  icon: Icons.publish_rounded,
+                  onPressed: _publish,
+                )
+              else
+                AppButton.secondary(
+                  label: 'Archive Course',
+                  icon: Icons.archive_outlined,
+                  onPressed: _archive,
+                ),
             ],
           ),
         ),
@@ -214,7 +271,7 @@ class _InstructorEditCoursePageState
     );
   }
 
-  Widget _statusRow(MockCourse c) {
+  Widget _statusRow(Course c) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(

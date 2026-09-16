@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -6,8 +7,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/mock_assignments.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../providers/instructor_assignment_provider.dart';
 
 class InstructorGradeSubmissionPage extends StatefulWidget {
   const InstructorGradeSubmissionPage({
@@ -27,18 +27,18 @@ class _InstructorGradeSubmissionPageState
   final _formKey = GlobalKey<FormState>();
   final _scoreCtrl = TextEditingController();
   final _feedbackCtrl = TextEditingController();
-
-  MockSubmission? _submission;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _submission = _find();
-    if (_submission?.score != null) {
-      _scoreCtrl.text = '${_submission!.score}';
+    final s = context
+        .read<InstructorAssignmentProvider>()
+        .submission(widget.submissionId);
+    if (s?.score != null) {
+      _scoreCtrl.text = '${s!.score}';
     }
-    _feedbackCtrl.text = _submission?.feedback ?? '';
+    _feedbackCtrl.text = s?.feedback ?? '';
   }
 
   @override
@@ -48,45 +48,48 @@ class _InstructorGradeSubmissionPageState
     super.dispose();
   }
 
-  MockSubmission? _find() {
-    for (final s in MockSubmissions.all) {
-      if (s.id == widget.submissionId) return s;
-    }
-    return null;
-  }
-
   Future<void> _grade() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 700));
+    final p = context.read<InstructorAssignmentProvider>();
+    final ok = await p.gradeSubmission(
+      submissionId: widget.submissionId,
+      score: int.parse(_scoreCtrl.text.trim()),
+      feedback: _feedbackCtrl.text.trim(),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(context, 'Submission graded (mock).');
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Submission graded.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not grade.');
+    }
   }
 
   Future<void> _requestResubmission() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 700));
+    final p = context.read<InstructorAssignmentProvider>();
+    final ok = await p.requestResubmission(
+      submissionId: widget.submissionId,
+      feedback: _feedbackCtrl.text.trim(),
+    );
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(
-      context,
-      'Resubmission requested (mock).',
-    );
-    Navigator.of(context).pop();
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Resubmission requested.');
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(context, 'Could not request resubmission.');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final s = _submission;
-    if (s == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Submission not found')),
-      );
-    }
+    final s = context
+        .watch<InstructorAssignmentProvider>()
+        .submission(widget.submissionId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -98,59 +101,57 @@ class _InstructorGradeSubmissionPageState
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              _headerCard(s),
-              const SizedBox(height: AppSpacing.lg),
-
+              if (s != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius:
+                    BorderRadius.circular(AppSpacing.radiusMd),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.assignmentTitle,
+                          style: AppTextStyles.headingSmall),
+                      const SizedBox(height: 4),
+                      Text(s.studentName ?? s.studentId,
+                          style: AppTextStyles.caption),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
               AppTextField(
                 controller: _scoreCtrl,
                 label: 'Score',
-                hint: 'Out of ${s.maxPoints ?? 100}',
-                prefixIcon: Icons.emoji_events_outlined,
+                hint: 'Out of ${s?.maxPoints ?? 100}',
                 keyboardType: TextInputType.number,
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'Enter a score';
-                  }
-                  final parsed = int.tryParse(v.trim());
-                  if (parsed == null || parsed < 0) {
-                    return 'Enter a valid number';
-                  }
-                  final max = s.maxPoints ?? 100;
-                  if (parsed > max) {
-                    return 'Score cannot exceed $max';
-                  }
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n < 0) return 'Enter a valid score';
+                  final max = s?.maxPoints ?? 100;
+                  if (n > max) return 'Cannot exceed $max';
                   return null;
                 },
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _feedbackCtrl,
                 label: 'Feedback',
-                hint:
-                'Provide constructive feedback for the student. This is '
-                    'shown to the student.',
                 maxLines: 6,
                 minLines: 4,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'Feedback is required';
-                  }
-                  if (v.trim().length < 10) {
-                    return 'Feedback should be at least 10 characters';
-                  }
-                  return null;
-                },
+                validator: (v) => (v == null || v.trim().length < 10)
+                    ? 'Provide at least 10 characters of feedback'
+                    : null,
               ),
               const SizedBox(height: AppSpacing.xl),
-
               AppButton.primary(
-                label: s.status == SubmissionStatus.resubmissionRequired
-                    ? 'Re-grade Submission'
-                    : 'Submit Grade',
+                label: 'Submit Grade',
                 icon: Icons.check_circle_rounded,
                 isLoading: _saving,
-                onPressed: _grade,
+                onPressed: _saving ? null : _grade,
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -158,35 +159,9 @@ class _InstructorGradeSubmissionPageState
                 icon: Icons.refresh_rounded,
                 onPressed: _saving ? null : _requestResubmission,
               ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'Requesting resubmission will notify the student and allow '
-                    'them to submit again.',
-                style: AppTextStyles.caption,
-              ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _headerCard(MockSubmission s) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(s.assignmentTitle,
-              style: AppTextStyles.headingSmall),
-          const SizedBox(height: 4),
-          Text(s.studentName, style: AppTextStyles.caption),
-        ],
       ),
     );
   }

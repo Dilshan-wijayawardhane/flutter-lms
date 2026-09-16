@@ -5,10 +5,8 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../mock_data/models/mock_enrollment.dart';
+import '../../../student/data/models/enrollment.dart';
 
-/// Learner row used on the instructor enrollments page.
-/// Shows student, course, progress bar, and last-accessed time.
 class LearnerCard extends StatelessWidget {
   const LearnerCard({
     super.key,
@@ -16,12 +14,13 @@ class LearnerCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockEnrollment enrollment;
+  final Enrollment enrollment;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final value = (enrollment.progressPercent / 100).clamp(0.0, 1.0);
+    final name = enrollment.studentName ?? enrollment.studentId;
 
     return Material(
       color: AppColors.card,
@@ -40,14 +39,14 @@ class LearnerCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  AppAvatar(name: enrollment.studentName, size: 40),
+                  AppAvatar(name: name, size: 40),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          enrollment.studentName,
+                          name,
                           style: AppTextStyles.labelLarge,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

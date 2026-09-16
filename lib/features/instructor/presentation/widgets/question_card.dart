@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../mock_data/models/mock_quiz_question.dart';
+import '../../../student/data/models/quiz_question.dart';
 
-/// Question row used on the instructor questions list.
-/// Shows order, question text, option count, points, and edit/delete actions.
 class QuestionCard extends StatelessWidget {
   const QuestionCard({
     super.key,
@@ -16,7 +14,7 @@ class QuestionCard extends StatelessWidget {
     this.onDelete,
   });
 
-  final MockQuizQuestion question;
+  final QuizQuestion question;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
@@ -112,7 +110,6 @@ class QuestionCard extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.sm),
               ...List.generate(question.options.length, (i) {
-                final isCorrect = question.correctOptionIndex == i;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
@@ -123,46 +120,24 @@ class QuestionCard extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isCorrect
-                              ? AppColors.success.withValues(alpha: 0.14)
-                              : AppColors.surfaceVariant,
-                          border: Border.all(
-                            color: isCorrect
-                                ? AppColors.success
-                                : AppColors.border,
-                          ),
+                          color: AppColors.surfaceVariant,
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: Text(
                           String.fromCharCode(65 + i),
-                          style: AppTextStyles.labelSmall.copyWith(
-                            color: isCorrect
-                                ? AppColors.success
-                                : AppColors.textSecondary,
-                          ),
+                          style: AppTextStyles.labelSmall
+                              .copyWith(color: AppColors.textSecondary),
                         ),
                       ),
                       const SizedBox(width: AppSpacing.xs),
                       Expanded(
                         child: Text(
                           question.options[i],
-                          style: AppTextStyles.bodySmall.copyWith(
-                            color: isCorrect
-                                ? AppColors.success
-                                : AppColors.textSecondary,
-                            fontWeight: isCorrect
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                          ),
+                          style: AppTextStyles.bodySmall,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (isCorrect)
-                        const Icon(
-                          Icons.check_circle_rounded,
-                          size: 14,
-                          color: AppColors.success,
-                        ),
                     ],
                   ),
                 );

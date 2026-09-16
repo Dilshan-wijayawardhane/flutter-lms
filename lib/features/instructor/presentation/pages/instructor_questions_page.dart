@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_empty_state.dart';
+import '../../../../core/widgets/app_loading.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz.dart';
-import '../../../../mock_data/models/mock_quiz_question.dart';
+import '../../../student/data/models/quiz_question.dart';
+import '../../providers/instructor_quiz_provider.dart';
 import '../widgets/question_card.dart';
 
 class InstructorQuestionsPage extends StatefulWidget {
-  const InstructorQuestionsPage({super.key, required this.quizId});
+  const InstructorQuestionsPage({
+    super.key,
+    required this.courseId,
+    required this.quizId,
+  });
 
+  final String courseId;
   final String quizId;
 
   @override
@@ -24,87 +30,87 @@ class InstructorQuestionsPage extends StatefulWidget {
 
 class _InstructorQuestionsPageState
     extends State<InstructorQuestionsPage> {
-  MockQuiz? _quiz;
-  late List<MockQuizQuestion> _questions;
-
   @override
   void initState() {
     super.initState();
-    _quiz = _findQuiz();
-    _questions = List.of(MockQuizQuestions.byQuiz(widget.quizId));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InstructorQuizProvider>().loadQuestions(widget.quizId);
+    });
   }
 
-  MockQuiz? _findQuiz() {
-    for (final q in MockQuizzes.all) {
-      if (q.id == widget.quizId) return q;
-    }
-    return null;
-  }
-
-  Future<void> _delete(MockQuizQuestion q) async {
+  Future<void> _delete(QuizQuestion q) async {
     final confirmed = await AppConfirmationDialog.show(
       context,
       title: 'Delete question?',
-      message: 'The question will be permanently removed from this quiz.',
+      message: 'The question will be permanently removed.',
       confirmLabel: 'Delete',
       isDestructive: true,
       icon: Icons.delete_outline_rounded,
     );
     if (!confirmed || !mounted) return;
-    setState(() => _questions.removeWhere((x) => x.id == q.id));
-    AppSnackbar.showSuccess(context, 'Question deleted (mock).');
+    final ok = await context
+        .read<InstructorQuizProvider>()
+        .deleteQuestion(quizId: widget.quizId, questionId: q.id);
+    if (!mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Question deleted.');
+    } else {
+      AppSnackbar.showError(context, 'Could not delete.');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final quiz = _quiz;
-    if (quiz == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Quiz not found')),
-      );
-    }
+    final p = context.watch<InstructorQuizProvider>();
+    final state = p.questionsStateFor(widget.quizId);
+    final questions = p.questionsFor(widget.quizId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(
-          quiz.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
+      appBar: AppBar(title: const Text('Questions')),
       body: SafeArea(
         top: false,
-        child: _questions.isEmpty
+        child: state == LoadState.loading && questions.isEmpty
+            ? const AppLoading(message: 'Loading questions…')
+            : questions.isEmpty
             ? AppEmptyState(
           icon: Icons.help_outline_rounded,
           title: 'No questions yet',
           message:
-          'Add the first question to this quiz. Each question can '
-              'have 2–6 options with one correct answer.',
+          'Add your first question. Each question supports 2–6 options.',
           actionLabel: 'Add Question',
           onAction: () => Navigator.of(context).pushNamed(
             AppRoutes.instructorCreateQuestion,
-            arguments: quiz.id,
+            arguments: {
+              'courseId': widget.courseId,
+              'quizId': widget.quizId,
+            },
           ),
         )
             : ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.md),
-          itemCount: _questions.length,
+          itemCount: questions.length,
           separatorBuilder: (_, __) =>
           const SizedBox(height: AppSpacing.sm),
           itemBuilder: (_, i) {
-            final q = _questions[i];
+            final q = questions[i];
             return QuestionCard(
               question: q,
               onTap: () => Navigator.of(context).pushNamed(
                 AppRoutes.instructorEditQuestion,
-                arguments: q.id,
+                arguments: {
+                  'courseId': widget.courseId,
+                  'quizId': widget.quizId,
+                  'questionId': q.id,
+                },
               ),
               onEdit: () => Navigator.of(context).pushNamed(
                 AppRoutes.instructorEditQuestion,
-                arguments: q.id,
+                arguments: {
+                  'courseId': widget.courseId,
+                  'quizId': widget.quizId,
+                  'questionId': q.id,
+                },
               ),
               onDelete: () => _delete(q),
             );
@@ -114,7 +120,10 @@ class _InstructorQuestionsPageState
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed(
           AppRoutes.instructorCreateQuestion,
-          arguments: quiz.id,
+          arguments: {
+            'courseId': widget.courseId,
+            'quizId': widget.quizId,
+          },
         ),
         icon: const Icon(Icons.add_rounded),
         label: const Text('New Question'),

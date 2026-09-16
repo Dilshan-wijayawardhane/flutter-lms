@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -6,13 +7,13 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../../core/widgets/app_status_chip.dart';
 import '../../../../core/widgets/app_success_message.dart';
-import '../../../../mock_data/mock_courses.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_course.dart';
+import '../../../student/data/models/course.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
-class InstructorCourseDetailsPage extends StatelessWidget {
+class InstructorCourseDetailsPage extends StatefulWidget {
   const InstructorCourseDetailsPage({
     super.key,
     required this.courseId,
@@ -21,8 +22,60 @@ class InstructorCourseDetailsPage extends StatelessWidget {
   final String courseId;
 
   @override
+  State<InstructorCourseDetailsPage> createState() =>
+      _InstructorCourseDetailsPageState();
+}
+
+class _InstructorCourseDetailsPageState
+    extends State<InstructorCourseDetailsPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Ensure sections are loaded so the summary is accurate.
+      context
+          .read<InstructorCourseProvider>()
+          .loadSections(widget.courseId);
+    });
+  }
+
+  Future<void> _publish(Course c) async {
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .publishCourse(c.id);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course published.' : 'Could not publish.',
+    );
+  }
+
+  Future<void> _archive(Course c) async {
+    final confirmed = await AppConfirmationDialog.show(
+      context,
+      title: 'Archive course?',
+      message:
+      'The course will be hidden from students. You can restore it later.',
+      confirmLabel: 'Archive',
+      isDestructive: true,
+      icon: Icons.archive_outlined,
+    );
+    if (!confirmed || !mounted) return;
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .archiveCourse(c.id);
+    if (!mounted) return;
+    AppSnackbar.showSuccess(
+      context,
+      ok ? 'Course archived.' : 'Could not archive.',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final course = _find(courseId);
+    final provider = context.watch<InstructorCourseProvider>();
+    final course = provider.courseById(widget.courseId);
+
     if (course == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -30,8 +83,7 @@ class InstructorCourseDetailsPage extends StatelessWidget {
       );
     }
 
-    final sections = MockSections.byCourse(course.id);
-    final quizzes = MockQuizzes.byCourse(course.id);
+    final sections = provider.sectionsFor(course.id);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -59,13 +111,12 @@ class InstructorCourseDetailsPage extends StatelessWidget {
           children: [
             _summaryCard(course),
             const SizedBox(height: AppSpacing.md),
-
             _manageTile(
               context,
               icon: Icons.list_alt_rounded,
               title: 'Sections & Lessons',
               subtitle:
-              '${course.sectionCount} sections · ${course.lessonCount} lessons',
+              '${sections.length} sections · ${course.lessonCount} lessons',
               route: AppRoutes.instructorSections,
               args: course.id,
             ),
@@ -74,7 +125,7 @@ class InstructorCourseDetailsPage extends StatelessWidget {
               context,
               icon: Icons.quiz_outlined,
               title: 'Quizzes',
-              subtitle: '${quizzes.length} quizzes',
+              subtitle: 'Manage quizzes',
               route: AppRoutes.instructorQuizzes,
               args: course.id,
             ),
@@ -106,14 +157,12 @@ class InstructorCourseDetailsPage extends StatelessWidget {
               args: course.id,
             ),
             const SizedBox(height: AppSpacing.lg),
-
             _sectionHeader('Curriculum Summary'),
             const SizedBox(height: AppSpacing.xs),
             if (sections.isEmpty)
               _emptyCard('No sections yet. Add your first section.')
             else
               ...sections.map(_sectionRow),
-
             const SizedBox(height: AppSpacing.lg),
             _sectionHeader('Publishing'),
             const SizedBox(height: AppSpacing.xs),
@@ -124,14 +173,7 @@ class InstructorCourseDetailsPage extends StatelessWidget {
     );
   }
 
-  MockCourse? _find(String id) {
-    for (final c in MockCourses.all) {
-      if (c.id == id) return c;
-    }
-    return null;
-  }
-
-  Widget _summaryCard(MockCourse c) {
+  Widget _summaryCard(Course c) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -211,8 +253,8 @@ class InstructorCourseDetailsPage extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        onTap: () => Navigator.of(context)
-            .pushNamed(route, arguments: args),
+        onTap: () =>
+            Navigator.of(context).pushNamed(route, arguments: args),
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
@@ -257,7 +299,7 @@ class InstructorCourseDetailsPage extends StatelessWidget {
   Widget _sectionHeader(String title) =>
       Text(title, style: AppTextStyles.headingSmall);
 
-  Widget _sectionRow(section) {
+  Widget _sectionRow(dynamic section) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.xs),
       padding: const EdgeInsets.all(AppSpacing.sm),
@@ -300,7 +342,7 @@ class InstructorCourseDetailsPage extends StatelessWidget {
     );
   }
 
-  Widget _publishCard(BuildContext context, MockCourse c) {
+  Widget _publishCard(BuildContext context, Course c) {
     final isPublished = c.status == CourseStatus.published;
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -321,21 +363,15 @@ class InstructorCourseDetailsPage extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           if (isPublished)
             AppButton.secondary(
-              label: 'Unpublish (mock)',
-              icon: Icons.pause_circle_outline_rounded,
-              onPressed: () => AppSnackbar.showInfo(
-                context,
-                'Unpublish will call the backend in Phase 2.',
-              ),
+              label: 'Archive Course',
+              icon: Icons.archive_outlined,
+              onPressed: () => _archive(c),
             )
           else
             AppButton.primary(
               label: 'Publish Course',
               icon: Icons.publish_rounded,
-              onPressed: () => AppSnackbar.showInfo(
-                context,
-                'Publish will call the backend in Phase 2.',
-              ),
+              onPressed: () => _publish(c),
             ),
         ],
       ),

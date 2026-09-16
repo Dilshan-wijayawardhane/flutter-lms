@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -8,11 +8,17 @@ import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
-import '../../../../mock_data/models/mock_lesson.dart';
+import '../../../student/data/models/lesson.dart';
+import '../../../student/providers/instructor_course_provider.dart';
 
 class InstructorCreateLessonPage extends StatefulWidget {
-  const InstructorCreateLessonPage({super.key, required this.sectionId});
+  const InstructorCreateLessonPage({
+    super.key,
+    required this.courseId,
+    required this.sectionId,
+  });
 
+  final String courseId;
   final String sectionId;
 
   @override
@@ -41,21 +47,33 @@ class _InstructorCreateLessonPageState
   Future<void> _save({bool publish = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+
+    final p = context.read<InstructorCourseProvider>();
+    final created = await p.createLesson(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      title: _titleCtrl.text.trim(),
+      type: _type,
+      durationMinutes: int.tryParse(_durationCtrl.text.trim()) ?? 10,
+      content: _type == LessonType.text ? _contentCtrl.text.trim() : null,
+      publish: publish,
+    );
+
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.showSuccess(
-      context,
-      publish ? 'Lesson published (mock).' : 'Lesson saved as draft (mock).',
-    );
-    Navigator.of(context).pop();
-  }
 
-  void _openMediaPage() {
-    Navigator.of(context).pushNamed(
-      AppRoutes.instructorLessonMedia,
-      arguments: 'new',
-    );
+    if (created != null) {
+      AppSnackbar.showSuccess(
+        context,
+        publish ? 'Lesson published.' : 'Lesson saved as draft.',
+      );
+      Navigator.of(context).pop();
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Could not create lesson.',
+      );
+    }
   }
 
   @override
@@ -74,45 +92,36 @@ class _InstructorCreateLessonPageState
               const SizedBox(height: AppSpacing.xs),
               _typeSelector(),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _titleCtrl,
                 label: 'Lesson title',
-                hint: 'e.g., Installing the SDK',
                 prefixIcon: Icons.title_rounded,
                 validator: (v) =>
                     Validators.minLength(v, 3, field: 'Lesson title'),
               ),
               const SizedBox(height: AppSpacing.md),
-
               AppTextField(
                 controller: _durationCtrl,
                 label: 'Duration (minutes)',
                 prefixIcon: Icons.timer_outlined,
                 keyboardType: TextInputType.number,
                 validator: (v) {
-                  final parsed = int.tryParse(v ?? '');
-                  if (parsed == null || parsed <= 0) {
-                    return 'Enter a valid duration';
-                  }
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n <= 0) return 'Enter a valid duration';
                   return null;
                 },
               ),
               const SizedBox(height: AppSpacing.md),
-
-              if (_type == LessonType.text) ...[
+              if (_type == LessonType.text)
                 AppTextField(
                   controller: _contentCtrl,
                   label: 'Lesson content',
-                  hint:
-                  'Write the lesson body. Markdown support arrives with '
-                      'backend integration.',
                   maxLines: 12,
                   minLines: 6,
                   validator: (v) =>
                       Validators.minLength(v, 20, field: 'Content'),
-                ),
-              ] else if (_type == LessonType.video) ...[
+                )
+              else
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
@@ -121,68 +130,19 @@ class _InstructorCreateLessonPageState
                     BorderRadius.circular(AppSpacing.radiusMd),
                     border: Border.all(color: AppColors.border),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Video media',
-                        style: AppTextStyles.labelLarge,
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        'Upload the video after saving the lesson. In this '
-                            'phase, uploads are UI-only and connect to the '
-                            'backend in the integration phase.',
-                        style: AppTextStyles.caption,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      AppButton.secondary(
-                        label: 'Manage media',
-                        icon: Icons.cloud_upload_outlined,
-                        onPressed: _openMediaPage,
-                      ),
-                    ],
+                  child: Text(
+                    'Media upload arrives with the upload phase. Save the '
+                        'lesson as draft, then upload the media from the edit '
+                        'screen.',
+                    style: AppTextStyles.bodySmall,
                   ),
                 ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius:
-                    BorderRadius.circular(AppSpacing.radiusMd),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Document media',
-                        style: AppTextStyles.labelLarge,
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        'Attach a PDF or document. Uploads are UI-only in '
-                            'this phase.',
-                        style: AppTextStyles.caption,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      AppButton.secondary(
-                        label: 'Manage document',
-                        icon: Icons.attach_file_rounded,
-                        onPressed: _openMediaPage,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
               const SizedBox(height: AppSpacing.xl),
               AppButton.primary(
                 label: 'Save as Draft',
                 icon: Icons.save_outlined,
                 isLoading: _saving,
-                onPressed: () => _save(publish: false),
+                onPressed: _saving ? null : () => _save(publish: false),
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton.secondary(
@@ -212,7 +172,6 @@ class _InstructorCreateLessonPageState
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(
                   vertical: AppSpacing.sm,
-                  horizontal: AppSpacing.xs,
                 ),
                 decoration: BoxDecoration(
                   color: active
@@ -235,7 +194,7 @@ class _InstructorCreateLessonPageState
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _typeShort(t),
+                      t.name.toUpperCase(),
                       style: AppTextStyles.labelSmall.copyWith(
                         color: active
                             ? Colors.white
@@ -260,17 +219,6 @@ class _InstructorCreateLessonPageState
         return Icons.play_circle_outline_rounded;
       case LessonType.document:
         return Icons.description_outlined;
-    }
-  }
-
-  String _typeShort(LessonType t) {
-    switch (t) {
-      case LessonType.text:
-        return 'TEXT';
-      case LessonType.video:
-        return 'VIDEO';
-      case LessonType.document:
-        return 'DOCUMENT';
     }
   }
 }

@@ -45,6 +45,121 @@ class QuizService {
         .toList();
   }
 
+  // ---- Instructor endpoints ----
+
+  Future<Quiz> createQuiz({
+    required String courseId,
+    required String title,
+    String? description,
+    int durationMinutes = 20,
+    int passingScore = 60,
+    int maxAttempts = 3,
+    bool publish = false,
+  }) async {
+    final res = await _client.post<Map<String, dynamic>>(
+      '/api/v1/courses/$courseId/quizzes',
+      data: {
+        'title': title,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        'durationMinutes': durationMinutes,
+        'passingScore': passingScore,
+        'maxAttempts': maxAttempts,
+        'publish': publish,
+      },
+    );
+    return Quiz.fromJson(res);
+  }
+
+  Future<Quiz> updateQuiz({
+    required String quizId,
+    String? title,
+    String? description,
+    int? durationMinutes,
+    int? passingScore,
+    int? maxAttempts,
+  }) async {
+    final body = <String, dynamic>{};
+    if (title != null) body['title'] = title;
+    if (description != null) body['description'] = description;
+    if (durationMinutes != null) body['durationMinutes'] = durationMinutes;
+    if (passingScore != null) body['passingScore'] = passingScore;
+    if (maxAttempts != null) body['maxAttempts'] = maxAttempts;
+
+    final res = await _client.patch<Map<String, dynamic>>(
+      '/api/v1/quizzes/$quizId',
+      data: body,
+    );
+    return Quiz.fromJson(res);
+  }
+
+  Future<void> deleteQuiz(String quizId) async {
+    await _client.delete<dynamic>('/api/v1/quizzes/$quizId');
+  }
+
+  Future<Quiz> publishQuiz(String quizId) async {
+    final res = await _client.post<Map<String, dynamic>>(
+      '/api/v1/quizzes/$quizId/publish',
+    );
+    return Quiz.fromJson(res);
+  }
+
+  Future<QuizQuestion> createQuestion({
+    required String quizId,
+    required String text,
+    required List<String> options,
+    required int correctOptionIndex,
+    required int points,
+  }) async {
+    final res = await _client.post<Map<String, dynamic>>(
+      '/api/v1/quizzes/$quizId/questions',
+      data: {
+        'text': text,
+        'options': options,
+        'correctOptionIndex': correctOptionIndex,
+        'points': points,
+      },
+    );
+    return QuizQuestion.fromJson(res);
+  }
+
+  Future<QuizQuestion> updateQuestion({
+    required String questionId,
+    String? text,
+    List<String>? options,
+    int? correctOptionIndex,
+    int? points,
+  }) async {
+    final body = <String, dynamic>{};
+    if (text != null) body['text'] = text;
+    if (options != null) body['options'] = options;
+    if (correctOptionIndex != null) {
+      body['correctOptionIndex'] = correctOptionIndex;
+    }
+    if (points != null) body['points'] = points;
+
+    final res = await _client.patch<Map<String, dynamic>>(
+      '/api/v1/questions/$questionId',
+      data: body,
+    );
+    return QuizQuestion.fromJson(res);
+  }
+
+  Future<void> deleteQuestion(String questionId) async {
+    await _client.delete<dynamic>('/api/v1/questions/$questionId');
+  }
+
+  /// Instructor view: all attempts for a quiz.
+  Future<List<QuizAttempt>> listAllAttempts(String quizId) async {
+    final res = await _client.get<dynamic>(
+      '/api/v1/quizzes/$quizId/attempts',
+    );
+    return _extractList(res)
+        .whereType<Map<String, dynamic>>()
+        .map(QuizAttempt.fromJson)
+        .toList();
+  }
+
   /// Start a new attempt.
   Future<QuizStartResponse> startAttempt(String quizId) async {
     final res = await _client.post<Map<String, dynamic>>(
