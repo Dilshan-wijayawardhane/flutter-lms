@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../data/models/register_request.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 
 class InstructorRegisterPage extends StatefulWidget {
@@ -19,7 +22,6 @@ class InstructorRegisterPage extends StatefulWidget {
 
 class _InstructorRegisterPageState extends State<InstructorRegisterPage> {
   final _formKey = GlobalKey<FormState>();
-
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -29,8 +31,6 @@ class _InstructorRegisterPageState extends State<InstructorRegisterPage> {
   final _experienceCtrl = TextEditingController();
   final _expertiseCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
-
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -48,18 +48,53 @@ class _InstructorRegisterPageState extends State<InstructorRegisterPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushNamed(
-      AppRoutes.verifyEmail,
-      arguments: _emailCtrl.text.trim(),
+
+    final auth = context.read<AuthProvider>();
+    auth.clearError();
+
+    final expertise = _expertiseCtrl.text
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final ok = await auth.registerInstructor(
+      InstructorRegisterRequest(
+        fullName: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+        headline: _headlineCtrl.text.trim(),
+        qualification: _qualificationCtrl.text.trim(),
+        experienceYears:
+        int.tryParse(_experienceCtrl.text.trim()) ?? 0,
+        expertise: expertise,
+        bio: _bioCtrl.text.trim(),
+      ),
     );
+
+    if (!mounted) return;
+
+    if (ok) {
+      AppSnackbar.showSuccess(
+        context,
+        'Account created. Check your email for the verification code.',
+      );
+      Navigator.of(context).pushNamed(
+        AppRoutes.verifyEmail,
+        arguments: _emailCtrl.text.trim(),
+      );
+    } else {
+      AppSnackbar.showError(
+        context,
+        auth.errorMessage ?? 'Registration failed. Please try again.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -185,17 +220,8 @@ class _InstructorRegisterPageState extends State<InstructorRegisterPage> {
 
                 AppButton.primary(
                   label: 'Create Account',
-                  isLoading: _isLoading,
-                  onPressed: _submit,
-                ),
-                const SizedBox(height: AppSpacing.md),
-
-                Center(
-                  child: Text(
-                    'Your profile will be reviewed after email verification.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.caption,
-                  ),
+                  isLoading: isLoading,
+                  onPressed: isLoading ? null : _submit,
                 ),
               ],
             ),

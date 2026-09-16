@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/routes/app_routes.dart';
@@ -10,6 +11,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 import '../widgets/otp_input_field.dart';
 
@@ -23,10 +25,8 @@ class VerifyEmailPage extends StatefulWidget {
 class _VerifyEmailPageState extends State<VerifyEmailPage> {
   String _otp = '';
   bool _hasError = false;
-  bool _isVerifying = false;
   int _resendCooldown = AppConstants.otpResendSeconds;
   Timer? _timer;
-
   String _email = '';
 
   @override
@@ -64,10 +64,23 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
     });
   }
 
-  void _onResend() {
+  Future<void> _onResend() async {
     if (_resendCooldown > 0) return;
-    AppSnackbar.showInfo(context, 'A new code has been sent.');
-    _startCooldown();
+
+    final auth = context.read<AuthProvider>();
+    final ok = await auth.resendOtp(email: _email);
+
+    if (!mounted) return;
+
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'A new code has been sent.');
+      _startCooldown();
+    } else {
+      AppSnackbar.showError(
+        context,
+        auth.errorMessage ?? 'Could not resend the code.',
+      );
+    }
   }
 
   Future<void> _verify() async {
@@ -77,22 +90,33 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
       AppSnackbar.showError(context, error);
       return;
     }
-    setState(() {
-      _hasError = false;
-      _isVerifying = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 700));
+
+    setState(() => _hasError = false);
+
+    final auth = context.read<AuthProvider>();
+    final ok = await auth.verifyEmail(email: _email, otp: _otp);
+
     if (!mounted) return;
-    setState(() => _isVerifying = false);
-    AppSnackbar.showSuccess(context, 'Email verified successfully.');
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.login,
-          (_) => false,
-    );
+
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Email verified successfully.');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.login,
+            (_) => false,
+      );
+    } else {
+      setState(() => _hasError = true);
+      AppSnackbar.showError(
+        context,
+        auth.errorMessage ?? 'Verification failed. Please try again.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -158,8 +182,8 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
               AppButton.primary(
                 label: 'Verify',
-                isLoading: _isVerifying,
-                onPressed: _verify,
+                isLoading: isLoading,
+                onPressed: isLoading ? null : _verify,
               ),
               const SizedBox(height: AppSpacing.md),
 

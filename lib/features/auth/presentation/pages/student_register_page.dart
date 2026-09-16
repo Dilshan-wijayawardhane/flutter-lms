@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../data/models/register_request.dart';
+import '../../providers/auth_provider.dart';
 import '../widgets/auth_header.dart';
 
 class StudentRegisterPage extends StatefulWidget {
@@ -24,8 +27,6 @@ class _StudentRegisterPageState extends State<StudentRegisterPage> {
   final _confirmCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
 
-  bool _isLoading = false;
-
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -38,18 +39,44 @@ class _StudentRegisterPageState extends State<StudentRegisterPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushNamed(
-      AppRoutes.verifyEmail,
-      arguments: _emailCtrl.text.trim(),
+
+    final auth = context.read<AuthProvider>();
+    auth.clearError();
+
+    final ok = await auth.registerStudent(
+      RegisterRequest(
+        fullName: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+        phone: _phoneCtrl.text.trim().isEmpty
+            ? null
+            : _phoneCtrl.text.trim(),
+      ),
     );
+
+    if (!mounted) return;
+
+    if (ok) {
+      AppSnackbar.showSuccess(
+        context,
+        'Account created. Check your email for the verification code.',
+      );
+      Navigator.of(context).pushNamed(
+        AppRoutes.verifyEmail,
+        arguments: _emailCtrl.text.trim(),
+      );
+    } else {
+      AppSnackbar.showError(
+        context,
+        auth.errorMessage ?? 'Registration failed. Please try again.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
@@ -119,26 +146,15 @@ class _StudentRegisterPageState extends State<StudentRegisterPage> {
                   controller: _confirmCtrl,
                   label: 'Confirm password',
                   hint: 'Repeat your password',
-                  validator: (v) => Validators.confirmPassword(
-                    v,
-                    _passwordCtrl.text,
-                  ),
+                  validator: (v) =>
+                      Validators.confirmPassword(v, _passwordCtrl.text),
                 ),
                 const SizedBox(height: AppSpacing.xl),
 
                 AppButton.primary(
                   label: 'Create Account',
-                  isLoading: _isLoading,
-                  onPressed: _submit,
-                ),
-                const SizedBox(height: AppSpacing.md),
-
-                Center(
-                  child: Text(
-                    'By continuing, you agree to our Terms and Privacy Policy.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.caption,
-                  ),
+                  isLoading: isLoading,
+                  onPressed: isLoading ? null : _submit,
                 ),
               ],
             ),

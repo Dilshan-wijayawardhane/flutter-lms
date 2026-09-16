@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -6,6 +7,7 @@ import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../providers/auth_provider.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -24,7 +26,30 @@ class _SplashPageState extends State<SplashPage> {
   Future<void> _navigateNext() async {
     await Future.delayed(AppConstants.splashDuration);
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(AppRoutes.onboarding);
+
+    final auth = context.read<AuthProvider>();
+    await auth.restoreSession();
+
+    if (!mounted) return;
+
+    if (auth.isAuthenticated) {
+      final role = auth.user?.role ?? 'STUDENT';
+      switch (role) {
+        case 'INSTRUCTOR':
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.instructorDashboard);
+          break;
+        case 'ADMIN':
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.adminDashboard);
+          break;
+        default:
+          Navigator.of(context)
+              .pushReplacementNamed(AppRoutes.studentDashboard);
+      }
+    } else {
+      Navigator.of(context).pushReplacementNamed(AppRoutes.onboarding);
+    }
   }
 
   @override
