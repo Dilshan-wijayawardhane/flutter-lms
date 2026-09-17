@@ -5,10 +5,8 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
-import '../../../../mock_data/models/mock_review.dart';
+import '../../data/models/review.dart';
 
-/// Review row used on the student reviews page.
-/// Shows rating, comment, course, and edit/delete actions when applicable.
 class ReviewCard extends StatelessWidget {
   const ReviewCard({
     super.key,
@@ -18,7 +16,7 @@ class ReviewCard extends StatelessWidget {
     this.onDelete,
   });
 
-  final MockReview review;
+  final CourseReview review;
   final bool isOwn;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;

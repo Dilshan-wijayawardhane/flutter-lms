@@ -26,9 +26,6 @@ class ProfileProvider extends ChangeNotifier {
   bool get hasError => _state == ProfileState.error;
   bool get hasProfile => _profile != null;
 
-  /// Loads the authenticated user's profile.
-  /// Safe to call multiple times — the UI can show a spinner while it
-  /// happens.
   Future<void> load({bool force = false}) async {
     if (_state == ProfileState.loading) return;
     if (!force && _profile != null) return;
@@ -50,8 +47,6 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Locally updates the profile after a successful PUT/PATCH.
-  /// Real update endpoint lands in Phase 3b.
   void applyLocalUpdate(UserProfile updated) {
     _profile = updated;
     _state = ProfileState.success;
@@ -59,7 +54,46 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears everything — call on logout.
+  Future<bool> uploadProfileImage({
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int, int)? onSendProgress,
+  }) async {
+    try {
+      final url = await _service.uploadProfileImage(
+        filePath: filePath,
+        fileName: fileName,
+        mimeType: mimeType,
+        onSendProgress: onSendProgress,
+      );
+      if (_profile != null && url != null) {
+        _profile = _profile!.copyWith(profileImageUrl: url);
+        notifyListeners();
+      }
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteProfileImage() async {
+    try {
+      await _service.deleteProfileImage();
+      if (_profile != null) {
+        _profile = _profile!.copyWith(profileImageUrl: null);
+        notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void clear() {
     _profile = null;
     _errorMessage = null;

@@ -1,3 +1,7 @@
+import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
+
+import '../../../../core/errors/api_exception.dart';
 import '../../../../core/network/api_client.dart';
 import '../models/course.dart';
 import '../models/enrollment.dart';
@@ -10,8 +14,13 @@ class CourseService {
   final ApiClient _client;
 
   static const String _listPath = '/api/v1/courses';
+  static const String _instructorListPath =
+      '/api/v1/courses/instructor/me';
 
-  /// Browse published courses. Search + category filters are query params.
+  // ---------------------------------------------------------------------------
+  // Browse / list
+  // ---------------------------------------------------------------------------
+
   Future<List<Course>> listPublished({
     String? search,
     String? categoryId,
@@ -36,40 +45,6 @@ class CourseService {
         .toList();
   }
 
-  static const String _instructorListPath =
-      '/api/v1/courses/instructor/me';
-
-
-  /// List enrollments for a course (instructor / admin).
-  Future<List<Enrollment>> listCourseEnrollments(String courseId) async {
-    final res = await _client.get<dynamic>(
-      '/api/v1/courses/$courseId/enrollments',
-    );
-    return _extractList(res)
-        .whereType<Map<String, dynamic>>()
-        .map(Enrollment.fromJson)
-        .toList();
-  }
-
-  /// Get a single enrollment by ID.
-  Future<Enrollment> getEnrollment(String enrollmentId) async {
-    final res = await _client.get<Map<String, dynamic>>(
-      '/api/v1/enrollments/$enrollmentId',
-    );
-    return Enrollment.fromJson(res);
-  }
-
-  /// List reviews for a course.
-  Future<List<CourseReview>> listCourseReviews(String courseId) async {
-    final res = await _client.get<dynamic>(
-      '/api/v1/courses/$courseId/reviews',
-    );
-    return _extractList(res)
-        .whereType<Map<String, dynamic>>()
-        .map(CourseReview.fromJson)
-        .toList();
-  }
-
   Future<List<Course>> listInstructorCourses() async {
     final res = await _client.get<dynamic>(_instructorListPath);
     return _extractList(res)
@@ -77,6 +52,17 @@ class CourseService {
         .map(Course.fromJson)
         .toList();
   }
+
+  Future<Course> getCourse(String courseId) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '$_listPath/$courseId',
+    );
+    return Course.fromJson(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Course CRUD
+  // ---------------------------------------------------------------------------
 
   Future<Course> createCourse({
     required String title,
@@ -147,7 +133,156 @@ class CourseService {
     await _client.delete<dynamic>('$_listPath/$courseId');
   }
 
-  // ---- Sections ----
+  // ---------------------------------------------------------------------------
+  // Thumbnail upload / delete
+  // ---------------------------------------------------------------------------
+
+  Future<Course> uploadThumbnail({
+    required String courseId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final multipart = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mimeType != null && mimeType.isNotEmpty
+            ? MediaType.parse(mimeType)
+            : null,
+      );
+      final form = FormData.fromMap({'thumbnail': multipart});
+
+      final res = await _client.upload<Map<String, dynamic>>(
+        '$_listPath/$courseId/thumbnail',
+        formData: form,
+        onSendProgress: onSendProgress,
+      );
+      return Course.fromJson(res);
+    } on DioException catch (e) {
+      throw ApiException.from(e.error ?? e);
+    }
+  }
+
+  Future<void> deleteThumbnail(String courseId) async {
+    await _client.delete<dynamic>('$_listPath/$courseId/thumbnail');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lesson media
+  // ---------------------------------------------------------------------------
+
+  Future<Lesson> uploadLessonVideo({
+    required String lessonId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final multipart = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mimeType != null && mimeType.isNotEmpty
+            ? MediaType.parse(mimeType)
+            : null,
+      );
+      final form = FormData.fromMap({'video': multipart});
+
+      final res = await _client.upload<Map<String, dynamic>>(
+        '/api/v1/lessons/$lessonId/video',
+        formData: form,
+        onSendProgress: onSendProgress,
+      );
+      return Lesson.fromJson(res);
+    } on DioException catch (e) {
+      throw ApiException.from(e.error ?? e);
+    }
+  }
+
+  Future<Lesson> uploadLessonDocument({
+    required String lessonId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final multipart = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mimeType != null && mimeType.isNotEmpty
+            ? MediaType.parse(mimeType)
+            : null,
+      );
+      final form = FormData.fromMap({'document': multipart});
+
+      final res = await _client.upload<Map<String, dynamic>>(
+        '/api/v1/lessons/$lessonId/document',
+        formData: form,
+        onSendProgress: onSendProgress,
+      );
+      return Lesson.fromJson(res);
+    } on DioException catch (e) {
+      throw ApiException.from(e.error ?? e);
+    }
+  }
+
+  Future<void> deleteLessonMedia(String lessonId) async {
+    await _client.delete<dynamic>('/api/v1/lessons/$lessonId/media');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Enrollments (for instructor / admin)
+  // ---------------------------------------------------------------------------
+
+  Future<List<Enrollment>> listCourseEnrollments(String courseId) async {
+    final res = await _client.get<dynamic>(
+      '/api/v1/courses/$courseId/enrollments',
+    );
+    return _extractList(res)
+        .whereType<Map<String, dynamic>>()
+        .map(Enrollment.fromJson)
+        .toList();
+  }
+
+  Future<Enrollment> getEnrollment(String enrollmentId) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/api/v1/enrollments/$enrollmentId',
+    );
+    return Enrollment.fromJson(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reviews (for instructor / admin)
+  // ---------------------------------------------------------------------------
+
+  Future<List<CourseReview>> listCourseReviews(String courseId) async {
+    final res = await _client.get<dynamic>(
+      '/api/v1/courses/$courseId/reviews',
+    );
+    return _extractList(res)
+        .whereType<Map<String, dynamic>>()
+        .map(CourseReview.fromJson)
+        .toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sections
+  // ---------------------------------------------------------------------------
+
+  Future<List<CourseSection>> listSections(String courseId) async {
+    final res = await _client.get<dynamic>(
+      '/api/v1/courses/$courseId/sections',
+    );
+    final list = _extractList(res);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(CourseSection.fromJson)
+        .toList();
+  }
+
   Future<CourseSection> createSection({
     required String courseId,
     required String title,
@@ -194,7 +329,28 @@ class CourseService {
     );
   }
 
-  // ---- Lessons ----
+  // ---------------------------------------------------------------------------
+  // Lessons
+  // ---------------------------------------------------------------------------
+
+  Future<List<Lesson>> listLessons(String sectionId) async {
+    final res = await _client.get<dynamic>(
+      '/api/v1/sections/$sectionId/lessons',
+    );
+    final list = _extractList(res);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(Lesson.fromJson)
+        .toList();
+  }
+
+  Future<Lesson> getLesson(String lessonId) async {
+    final res = await _client.get<Map<String, dynamic>>(
+      '/api/v1/lessons/$lessonId',
+    );
+    return Lesson.fromJson(res);
+  }
+
   Future<Lesson> createLesson({
     required String sectionId,
     required String title,
@@ -255,46 +411,10 @@ class CourseService {
     );
   }
 
-  Future<Course> getCourse(String courseId) async {
-    final res = await _client.get<Map<String, dynamic>>(
-      '$_listPath/$courseId',
-    );
-    return Course.fromJson(res);
-  }
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
 
-  /// Fetch sections for a course.
-  Future<List<CourseSection>> listSections(String courseId) async {
-    final res = await _client.get<dynamic>(
-      '/api/v1/courses/$courseId/sections',
-    );
-    final list = _extractList(res);
-    return list
-        .whereType<Map<String, dynamic>>()
-        .map(CourseSection.fromJson)
-        .toList();
-  }
-
-  /// Fetch lessons for a section.
-  Future<List<Lesson>> listLessons(String sectionId) async {
-    final res = await _client.get<dynamic>(
-      '/api/v1/sections/$sectionId/lessons',
-    );
-    final list = _extractList(res);
-    return list
-        .whereType<Map<String, dynamic>>()
-        .map(Lesson.fromJson)
-        .toList();
-  }
-
-  /// Fetch a single lesson by ID.
-  Future<Lesson> getLesson(String lessonId) async {
-    final res = await _client.get<Map<String, dynamic>>(
-      '/api/v1/lessons/$lessonId',
-    );
-    return Lesson.fromJson(res);
-  }
-
-  /// Extracts a list from a variety of response envelopes.
   List<dynamic> _extractList(dynamic res) {
     if (res is List) return res;
     if (res is Map<String, dynamic>) {

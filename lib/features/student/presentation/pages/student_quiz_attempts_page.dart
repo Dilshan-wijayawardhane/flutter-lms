@@ -1,32 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_empty_state.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz_attempt.dart';
+import '../../../../core/widgets/app_error_state.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../data/models/quiz_attempt.dart';
+import '../../providers/quiz_provider.dart';
 
-class StudentQuizAttemptsPage extends StatelessWidget {
+class StudentQuizAttemptsPage extends StatefulWidget {
   const StudentQuizAttemptsPage({super.key, required this.quizId});
 
   final String quizId;
 
   @override
+  State<StudentQuizAttemptsPage> createState() =>
+      _StudentQuizAttemptsPageState();
+}
+
+class _StudentQuizAttemptsPageState
+    extends State<StudentQuizAttemptsPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<QuizProvider>().loadAttempts(widget.quizId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final attempts = MockQuizAttempts.student1Attempts
-        .where((a) => a.quizId == quizId)
-        .toList()
-      ..sort((a, b) =>
-          (b.submittedAt ?? DateTime(0)).compareTo(a.submittedAt ?? DateTime(0)));
+    final provider = context.watch<QuizProvider>();
+    final state = provider.attemptsStateFor(widget.quizId);
+    final attempts = provider.attemptsFor(widget.quizId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Attempt History')),
       body: SafeArea(
         top: false,
-        child: attempts.isEmpty
+        child: state == LoadState.loading && attempts.isEmpty
+            ? const AppLoading(message: 'Loading attempts…')
+            : state == LoadState.error && attempts.isEmpty
+            ? AppErrorState(
+          title: 'Could not load attempts',
+          message: 'Please try again.',
+          onRetry: () => provider.loadAttempts(
+            widget.quizId,
+            force: true,
+          ),
+        )
+            : attempts.isEmpty
             ? const AppEmptyState(
           icon: Icons.history_rounded,
           title: 'No attempts yet',
@@ -37,13 +65,14 @@ class StudentQuizAttemptsPage extends StatelessWidget {
           itemCount: attempts.length,
           separatorBuilder: (_, __) =>
           const SizedBox(height: AppSpacing.sm),
-          itemBuilder: (_, i) => _attemptCard(attempts[i]),
+          itemBuilder: (_, i) =>
+              _attemptCard(attempts[i]),
         ),
       ),
     );
   }
 
-  Widget _attemptCard(MockQuizAttempt attempt) {
+  Widget _attemptCard(QuizAttempt attempt) {
     final passed = attempt.passed ?? false;
     final color = passed ? AppColors.success : AppColors.danger;
     return Container(
@@ -70,16 +99,13 @@ class StudentQuizAttemptsPage extends StatelessWidget {
                 ),
                 child: Text(
                   passed ? 'PASSED' : 'FAILED',
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: color,
-                  ),
+                  style:
+                  AppTextStyles.labelSmall.copyWith(color: color),
                 ),
               ),
               const Spacer(),
-              Text(
-                'Attempt ${attempt.attemptNumber}',
-                style: AppTextStyles.caption,
-              ),
+              Text('Attempt ${attempt.attemptNumber}',
+                  style: AppTextStyles.caption),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -94,10 +120,8 @@ class StudentQuizAttemptsPage extends StatelessWidget {
               _info(Icons.timer_outlined,
                   Formatters.durationSeconds(attempt.durationSeconds)),
               const Spacer(),
-              Text(
-                Formatters.relative(attempt.submittedAt),
-                style: AppTextStyles.caption,
-              ),
+              Text(Formatters.relative(attempt.submittedAt),
+                  style: AppTextStyles.caption),
             ],
           ),
         ],

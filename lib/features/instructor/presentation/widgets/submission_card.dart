@@ -6,10 +6,8 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_submission.dart';
+import '../../../student/data/models/submission.dart';
 
-/// Row used on the instructor submissions list.
-/// Shows student, assignment, status chip, and quick score info.
 class SubmissionCard extends StatelessWidget {
   const SubmissionCard({
     super.key,
@@ -17,7 +15,7 @@ class SubmissionCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockSubmission submission;
+  final Submission submission;
   final VoidCallback? onTap;
 
   @override
@@ -39,14 +37,17 @@ class SubmissionCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  AppAvatar(name: submission.studentName, size: 36),
+                  AppAvatar(
+                    name: submission.studentName ?? submission.studentId,
+                    size: 36,
+                  ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          submission.studentName,
+                          submission.studentName ?? submission.studentId,
                           style: AppTextStyles.labelLarge,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -89,9 +90,11 @@ class SubmissionCard extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.12),
-                        borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusPill),
+                        color:
+                        AppColors.success.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusPill,
+                        ),
                       ),
                       child: Text(
                         '${submission.score}/${submission.maxPoints ?? 0}',

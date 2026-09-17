@@ -1,33 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/load_state.dart';
 import '../../../../core/widgets/app_button.dart';
-import '../../../../mock_data/mock_quizzes.dart';
-import '../../../../mock_data/models/mock_quiz.dart';
+import '../../../../core/widgets/app_loading.dart';
+import '../../providers/quiz_provider.dart';
 
-class StudentQuizResultPage extends StatelessWidget {
+class StudentQuizResultPage extends StatefulWidget {
   const StudentQuizResultPage({super.key, required this.quizId});
 
   final String quizId;
 
   @override
+  State<StudentQuizResultPage> createState() =>
+      _StudentQuizResultPageState();
+}
+
+class _StudentQuizResultPageState extends State<StudentQuizResultPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<QuizProvider>().loadAttempts(widget.quizId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final quiz = _findQuiz(quizId);
-    if (quiz == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Quiz not found')),
+    final p = context.watch<QuizProvider>();
+    final quiz = p.quizById(widget.quizId);
+    final attempts = p.attemptsFor(widget.quizId);
+    final latest = attempts.isEmpty ? null : attempts.first;
+
+    if (quiz == null && latest == null) {
+      return const Scaffold(
+        body: SafeArea(
+          child: AppLoading(message: 'Loading result…'),
+        ),
       );
     }
 
-    // Phase 1: static mock result. Phase 2: this will come from backend.
-    final totalPoints = quiz.totalPoints;
-    final score = (totalPoints * 0.8).round();
-    final percent = (score / totalPoints) * 100;
-    final passed = percent >= quiz.passingScore;
+    final score = latest?.score ?? 0;
+    final total = latest?.totalPoints ?? quiz?.totalPoints ?? 0;
+    final percent =
+    total > 0 ? (score / total) * 100 : 0.0;
+    final passed = latest?.passed ?? (percent >= (quiz?.passingScore ?? 60));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -40,42 +61,14 @@ class StudentQuizResultPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            _resultHero(context, quiz, score, totalPoints, percent, passed),
-            const SizedBox(height: AppSpacing.lg),
-            _summaryRow(quiz, percent, passed),
-            const SizedBox(height: AppSpacing.lg),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius:
-                BorderRadius.circular(AppSpacing.radiusMd),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'This result is a mock preview. In the backend '
-                          'integration phase, the score and pass/fail value '
-                          'will come directly from the server.',
-                      style: AppTextStyles.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _hero(context, quiz, score, total, percent, passed),
             const SizedBox(height: AppSpacing.lg),
             AppButton.primary(
               label: 'View Attempt History',
               icon: Icons.history_rounded,
               onPressed: () => Navigator.of(context).pushNamed(
                 AppRoutes.studentQuizAttempts,
-                arguments: quiz.id,
+                arguments: widget.quizId,
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -90,18 +83,11 @@ class StudentQuizResultPage extends StatelessWidget {
     );
   }
 
-  MockQuiz? _findQuiz(String id) {
-    for (final q in MockQuizzes.all) {
-      if (q.id == id) return q;
-    }
-    return null;
-  }
-
-  Widget _resultHero(
+  Widget _hero(
       BuildContext context,
-      MockQuiz quiz,
+      dynamic quiz,
       int score,
-      int totalPoints,
+      int total,
       double percent,
       bool passed,
       ) {
@@ -137,9 +123,7 @@ class StudentQuizResultPage extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            passed
-                ? 'You passed "${quiz.title}".'
-                : 'You did not pass "${quiz.title}" this time.',
+            quiz?.title ?? '',
             textAlign: TextAlign.center,
             style: AppTextStyles.bodySmall,
           ),
@@ -147,9 +131,10 @@ class StudentQuizResultPage extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _statColumn('Score', '$score/$totalPoints'),
-              _statColumn('Percent', '${percent.toStringAsFixed(0)}%'),
-              _statColumn('Passing', '${quiz.passingScore}%'),
+              _stat('Score', '$score/$total'),
+              _stat('Percent', '${percent.toStringAsFixed(0)}%'),
+              _stat('Passing',
+                  '${(quiz?.passingScore ?? 60)}%'),
             ],
           ),
         ],
@@ -157,63 +142,12 @@ class StudentQuizResultPage extends StatelessWidget {
     );
   }
 
-  Widget _statColumn(String label, String value) {
+  Widget _stat(String label, String value) {
     return Column(
       children: [
         Text(value, style: AppTextStyles.headingSmall),
         const SizedBox(height: 2),
         Text(label, style: AppTextStyles.caption),
-      ],
-    );
-  }
-
-  Widget _summaryRow(MockQuiz quiz, double percent, bool passed) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          _summaryItem('Quiz', quiz.title),
-          const Divider(height: AppSpacing.lg),
-          _summaryItem(
-            'Result',
-            passed ? 'Passed' : 'Failed',
-            valueColor:
-            passed ? AppColors.success : AppColors.danger,
-          ),
-          const Divider(height: AppSpacing.lg),
-          _summaryItem(
-            'Duration',
-            '${quiz.durationMinutes} minutes',
-          ),
-          const Divider(height: AppSpacing.lg),
-          _summaryItem(
-            'Max attempts',
-            '${quiz.maxAttempts}',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryItem(
-      String label,
-      String value, {
-        Color? valueColor,
-      }) {
-    return Row(
-      children: [
-        Text(label, style: AppTextStyles.bodySmall),
-        const Spacer(),
-        Text(
-          value,
-          style: AppTextStyles.labelLarge
-              .copyWith(color: valueColor),
-        ),
       ],
     );
   }

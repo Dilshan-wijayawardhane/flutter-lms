@@ -15,6 +15,7 @@ import '../../features/auth/presentation/pages/verify_email_page.dart';
 // ============================================================
 // STUDENT
 // ============================================================
+import '../../features/student/data/models/notification.dart';
 import '../../features/student/presentation/pages/student_account_page.dart';
 import '../../features/student/presentation/pages/student_assignment_details_page.dart';
 import '../../features/student/presentation/pages/student_assignment_submission_page.dart';
@@ -169,8 +170,8 @@ class AppRouter {
       subtitle: 'Rendered inside StudentShell',
     ),
     AppRoutes.studentNotificationDetails: (_, args) {
-      final id = args is String ? args : '';
-      return StudentNotificationDetailsPage(notificationId: id);
+      final n = args is AppNotification ? args : null;
+      return StudentNotificationDetailsPage(notification: n);
     },
     AppRoutes.studentProfile: (_, __) => _placeholder(
       'Profile',
@@ -240,8 +241,12 @@ class AppRouter {
       );
     },
     AppRoutes.instructorLessonMedia: (_, args) {
-      final id = args is String ? args : '';
-      return InstructorLessonMediaPage(lessonId: id);
+      final m = args is Map ? args : const {};
+      return InstructorLessonMediaPage(
+        courseId: (m['courseId'] ?? '') as String,
+        sectionId: (m['sectionId'] ?? '') as String,
+        lessonId: (m['lessonId'] ?? '') as String,
+      );
     },
     AppRoutes.instructorQuizzes: (_, args) {
       final id = args is String ? args : '';

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/media_picker.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_confirmation_dialog.dart';
@@ -15,7 +16,7 @@ import '../../../../core/widgets/image_picker_field.dart';
 import '../../../student/data/models/category.dart';
 import '../../../student/data/models/course.dart';
 import '../../../student/providers/category_provider.dart';
-import '../../../student/providers/instructor_course_provider.dart';
+import '../../providers/instructor_course_provider.dart';
 
 class InstructorEditCoursePage extends StatefulWidget {
   const InstructorEditCoursePage({super.key, required this.courseId});
@@ -39,6 +40,9 @@ class _InstructorEditCoursePageState
   CourseLevel _level = CourseLevel.beginner;
   bool _isSaving = false;
 
+  PickedMedia? _pickedImage;
+  double? _uploadProgress;
+
   @override
   void initState() {
     super.initState();
@@ -46,9 +50,9 @@ class _InstructorEditCoursePageState
       context.read<CategoryProvider>().load();
     });
 
-    final course = context.read<InstructorCourseProvider>().courseById(
-      widget.courseId,
-    );
+    final course = context
+        .read<InstructorCourseProvider>()
+        .courseById(widget.courseId);
     _titleCtrl = TextEditingController(text: course?.title ?? '');
     _shortCtrl =
         TextEditingController(text: course?.shortDescription ?? '');
@@ -94,6 +98,51 @@ class _InstructorEditCoursePageState
         context,
         provider.errorMessage ?? 'Could not update course.',
       );
+    }
+  }
+
+  Future<void> _uploadThumbnail() async {
+    final picked = _pickedImage;
+    if (picked == null) return;
+
+    setState(() => _uploadProgress = 0);
+
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .uploadCourseThumbnail(
+      courseId: widget.courseId,
+      filePath: picked.path,
+      fileName: picked.name,
+      mimeType: picked.mimeType,
+      onSendProgress: (sent, total) {
+        if (total <= 0) return;
+        if (!mounted) return;
+        final double ratio = sent / total;
+        setState(() => _uploadProgress = ratio);
+      },
+    );
+
+    if (!mounted) return;
+    setState(() => _uploadProgress = null);
+
+    if (ok != null) {
+      AppSnackbar.showSuccess(context, 'Thumbnail uploaded.');
+      setState(() => _pickedImage = null);
+    } else {
+      AppSnackbar.showError(context, 'Upload failed.');
+    }
+  }
+
+  Future<void> _removeThumbnail() async {
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .deleteCourseThumbnail(widget.courseId);
+    if (!mounted) return;
+    if (ok != null) {
+      setState(() => _pickedImage = null);
+      AppSnackbar.showSuccess(context, 'Thumbnail removed.');
+    } else {
+      AppSnackbar.showError(context, 'Could not remove thumbnail.');
     }
   }
 
@@ -189,12 +238,14 @@ class _InstructorEditCoursePageState
               const SizedBox(height: AppSpacing.md),
               ImagePickerField(
                 imageUrl: course.thumbnailUrl,
+                localFilePath: _pickedImage?.path,
+                uploadProgress: _uploadProgress,
                 label: 'Course thumbnail',
                 height: 180,
-                onPickRequested: () => AppSnackbar.showInfo(
-                  context,
-                  'Thumbnail upload arrives with the upload phase.',
-                ),
+                onPicked: (m) => setState(() => _pickedImage = m),
+                onUpload:
+                _pickedImage == null ? null : _uploadThumbnail,
+                onRemove: _removeThumbnail,
               ),
               const SizedBox(height: AppSpacing.lg),
               AppTextField(

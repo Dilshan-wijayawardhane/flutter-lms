@@ -22,14 +22,20 @@ class InstructorCourseProvider extends ChangeNotifier {
   final Map<String, List<CourseSection>> _sections = {};
   final Map<String, Map<String, List<Lesson>>> _lessons = {};
 
+  // ---------------------------------------------------------------------------
+  // Getters
+  // ---------------------------------------------------------------------------
+
   LoadState get listState => _listState;
   List<Course> get courses => _courses;
   String? get errorMessage => _error;
 
   LoadState sectionsStateFor(String courseId) =>
       _sectionsState[courseId] ?? LoadState.initial;
+
   List<CourseSection> sectionsFor(String courseId) =>
       _sections[courseId] ?? const [];
+
   List<Lesson> lessonsFor(String courseId, String sectionId) =>
       _lessons[courseId]?[sectionId] ?? const [];
 
@@ -39,6 +45,10 @@ class InstructorCourseProvider extends ChangeNotifier {
     }
     return null;
   }
+
+  // ---------------------------------------------------------------------------
+  // Courses
+  // ---------------------------------------------------------------------------
 
   Future<void> loadMyCourses({bool force = false}) async {
     if (_listState == LoadState.loading) return;
@@ -114,7 +124,7 @@ class InstructorCourseProvider extends ChangeNotifier {
         level: level,
         price: price,
       );
-      _replace(c);
+      _replaceCourse(c);
       return c;
     } on ApiException catch (e) {
       _error = e.message;
@@ -127,7 +137,7 @@ class InstructorCourseProvider extends ChangeNotifier {
 
   Future<bool> publishCourse(String id) async {
     try {
-      _replace(await _service.publishCourse(id));
+      _replaceCourse(await _service.publishCourse(id));
       return true;
     } on ApiException catch (e) {
       _error = e.message;
@@ -140,7 +150,7 @@ class InstructorCourseProvider extends ChangeNotifier {
 
   Future<bool> archiveCourse(String id) async {
     try {
-      _replace(await _service.archiveCourse(id));
+      _replaceCourse(await _service.archiveCourse(id));
       return true;
     } on ApiException catch (e) {
       _error = e.message;
@@ -166,7 +176,83 @@ class InstructorCourseProvider extends ChangeNotifier {
     }
   }
 
-  // ---- Sections ----
+  // ---------------------------------------------------------------------------
+  // Course thumbnail
+  // ---------------------------------------------------------------------------
+
+  Future<bool> uploadCourseThumbnail({
+    required String courseId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final updated = await _service.uploadThumbnail(
+        courseId: courseId,
+        filePath: filePath,
+        fileName: fileName,
+        mimeType: mimeType,
+        onSendProgress: onSendProgress,
+      );
+      _replaceCourse(updated);
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteCourseThumbnail(String courseId) async {
+    try {
+      await _service.deleteThumbnail(courseId);
+
+      final existing = courseById(courseId);
+      if (existing != null) {
+        _replaceCourse(
+          Course(
+            id: existing.id,
+            title: existing.title,
+            description: existing.description,
+            instructorId: existing.instructorId,
+            instructorName: existing.instructorName,
+            categoryId: existing.categoryId,
+            categoryName: existing.categoryName,
+            status: existing.status,
+            level: existing.level,
+            shortDescription: existing.shortDescription,
+            thumbnailUrl: null,
+            price: existing.price,
+            rating: existing.rating,
+            ratingCount: existing.ratingCount,
+            learnerCount: existing.learnerCount,
+            sectionCount: existing.sectionCount,
+            lessonCount: existing.lessonCount,
+            totalDurationMinutes: existing.totalDurationMinutes,
+            isEnrolled: existing.isEnrolled,
+            progressPercent: existing.progressPercent,
+            createdAt: existing.createdAt,
+            updatedAt: existing.updatedAt,
+          ),
+        );
+      }
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sections
+  // ---------------------------------------------------------------------------
+
   Future<void> loadSections(String courseId, {bool force = false}) async {
     if (_sectionsState[courseId] == LoadState.loading) return;
     if (!force && _sections[courseId] != null) return;
@@ -299,7 +385,10 @@ class InstructorCourseProvider extends ChangeNotifier {
     }
   }
 
-  // ---- Lessons ----
+  // ---------------------------------------------------------------------------
+  // Lessons
+  // ---------------------------------------------------------------------------
+
   Future<Lesson?> createLesson({
     required String courseId,
     required String sectionId,
@@ -350,7 +439,8 @@ class InstructorCourseProvider extends ChangeNotifier {
         content: content,
       );
       final list = _lessons[courseId]?[sectionId] ?? [];
-      _lessons[courseId]?[sectionId] = list
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] = list
           .map((l) => l.id == lessonId ? updated : l)
           .toList();
       notifyListeners();
@@ -372,7 +462,8 @@ class InstructorCourseProvider extends ChangeNotifier {
     try {
       final updated = await _service.publishLesson(lessonId);
       final list = _lessons[courseId]?[sectionId] ?? [];
-      _lessons[courseId]?[sectionId] = list
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] = list
           .map((l) => l.id == lessonId ? updated : l)
           .toList();
       notifyListeners();
@@ -394,7 +485,8 @@ class InstructorCourseProvider extends ChangeNotifier {
     try {
       await _service.deleteLesson(lessonId);
       final list = _lessons[courseId]?[sectionId] ?? [];
-      _lessons[courseId]?[sectionId] =
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] =
           list.where((l) => l.id != lessonId).toList();
       notifyListeners();
       return true;
@@ -407,7 +499,128 @@ class InstructorCourseProvider extends ChangeNotifier {
     }
   }
 
-  void _replace(Course c) {
+  // ---------------------------------------------------------------------------
+  // Lesson media (video / document) + delete
+  // ---------------------------------------------------------------------------
+
+  Future<bool> uploadLessonVideo({
+    required String courseId,
+    required String sectionId,
+    required String lessonId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final updated = await _service.uploadLessonVideo(
+        lessonId: lessonId,
+        filePath: filePath,
+        fileName: fileName,
+        mimeType: mimeType,
+        onSendProgress: onSendProgress,
+      );
+
+      final list = _lessons[courseId]?[sectionId] ?? [];
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] = list
+          .map((l) => l.id == lessonId ? updated : l)
+          .toList();
+
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> uploadLessonDocument({
+    required String courseId,
+    required String sectionId,
+    required String lessonId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final updated = await _service.uploadLessonDocument(
+        lessonId: lessonId,
+        filePath: filePath,
+        fileName: fileName,
+        mimeType: mimeType,
+        onSendProgress: onSendProgress,
+      );
+
+      final list = _lessons[courseId]?[sectionId] ?? [];
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] = list
+          .map((l) => l.id == lessonId ? updated : l)
+          .toList();
+
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteLessonMedia({
+    required String courseId,
+    required String sectionId,
+    required String lessonId,
+  }) async {
+    try {
+      await _service.deleteLessonMedia(lessonId);
+
+      // Clear the media URL locally so the UI reflects the deletion.
+      final list = _lessons[courseId]?[sectionId] ?? [];
+      _lessons[courseId] ??= {};
+      _lessons[courseId]![sectionId] = list
+          .map((l) => l.id == lessonId
+          ? Lesson(
+        id: l.id,
+        sectionId: l.sectionId,
+        courseId: l.courseId,
+        title: l.title,
+        type: l.type,
+        status: l.status,
+        order: l.order,
+        durationMinutes: l.durationMinutes,
+        content: l.content,
+        videoUrl: null,
+        documentUrl: null,
+        documentName: null,
+        isCompleted: l.isCompleted,
+        isLocked: l.isLocked,
+      )
+          : l)
+          .toList();
+
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  void _replaceCourse(Course c) {
     _courses = _courses.map((x) => x.id == c.id ? c : x).toList();
     notifyListeners();
   }

@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../mock_data/models/mock_quiz_question.dart';
+import '../../data/models/quiz_question.dart';
 
-/// Single multiple-choice question card.
-/// Purely presentational — the parent owns selected state.
 class QuizQuestionCard extends StatelessWidget {
   const QuizQuestionCard({
     super.key,
@@ -17,7 +15,7 @@ class QuizQuestionCard extends StatelessWidget {
     this.currentIndex,
   });
 
-  final MockQuizQuestion question;
+  final QuizQuestion question;
   final int? selectedIndex;
   final ValueChanged<int> onSelected;
   final int? totalQuestions;
@@ -90,7 +88,7 @@ class QuizQuestionCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                String.fromCharCode(65 + index), // A, B, C, D
+                String.fromCharCode(65 + index),
                 style: AppTextStyles.labelSmall.copyWith(
                   color: isSelected
                       ? Colors.white
@@ -102,13 +100,7 @@ class QuizQuestionCard extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: isSelected
-                      ? AppColors.textPrimary
-                      : AppColors.textPrimary,
-                  fontWeight:
-                  isSelected ? FontWeight.w500 : FontWeight.w400,
-                ),
+                style: AppTextStyles.bodyMedium,
               ),
             ),
           ],

@@ -4,9 +4,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../mock_data/models/mock_notification.dart';
+import '../../data/models/notification.dart';
 
-/// Notification row. Visually distinguishes unread vs read.
 class NotificationCard extends StatelessWidget {
   const NotificationCard({
     super.key,
@@ -14,7 +13,7 @@ class NotificationCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockNotification notification;
+  final AppNotification notification;
   final VoidCallback? onTap;
 
   @override
@@ -32,7 +31,8 @@ class NotificationCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             border: Border.all(
-              color: unread ? AppColors.primaryLight : AppColors.border,
+              color:
+              unread ? AppColors.primaryLight : AppColors.border,
             ),
           ),
           child: Row(

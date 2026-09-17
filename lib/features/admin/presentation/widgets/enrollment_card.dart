@@ -6,9 +6,8 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_enrollment.dart';
+import '../../../student/data/models/enrollment.dart';
 
-/// Enrollment row used on the admin enrollments list.
 class EnrollmentCard extends StatelessWidget {
   const EnrollmentCard({
     super.key,
@@ -16,7 +15,7 @@ class EnrollmentCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockEnrollment enrollment;
+  final Enrollment enrollment;
   final VoidCallback? onTap;
 
   @override
@@ -67,7 +66,8 @@ class EnrollmentCard extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.sm),
               ClipRRect(
-                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                borderRadius:
+                BorderRadius.circular(AppSpacing.radiusPill),
                 child: LinearProgressIndicator(
                   value: value,
                   minHeight: 6,
@@ -79,10 +79,8 @@ class EnrollmentCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Row(
                 children: [
-                  Text(
-                    '${enrollment.progressPercent}% complete',
-                    style: AppTextStyles.caption,
-                  ),
+                  Text('${enrollment.progressPercent}% complete',
+                      style: AppTextStyles.caption),
                   const Spacer(),
                   Text(
                     'Enrolled ${Formatters.relative(enrollment.enrolledAt)}',

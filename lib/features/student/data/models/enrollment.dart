@@ -6,6 +6,7 @@ class Enrollment {
     required this.courseId,
     required this.courseName,
     required this.studentId,
+    required this.studentName,
     required this.status,
     required this.progressPercent,
     this.courseThumbnailUrl,
@@ -20,6 +21,10 @@ class Enrollment {
   final String courseId;
   final String courseName;
   final String studentId;
+
+  /// Never null — falls back to the studentId when the backend omits a name.
+  final String studentName;
+
   final EnrollmentStatus status;
   final int progressPercent;
   final String? courseThumbnailUrl;
@@ -32,11 +37,25 @@ class Enrollment {
   factory Enrollment.fromJson(Map<String, dynamic> json) {
     final data = (json['data'] as Map<String, dynamic>?) ?? json;
     final courseJson = data['course'] as Map<String, dynamic>?;
+    final studentJson = data['student'] as Map<String, dynamic>?;
     final instructorJson =
     courseJson?['instructor'] as Map<String, dynamic>?;
 
     final statusStr =
     ((data['status'] ?? 'ACTIVE') as String).toUpperCase();
+
+    final studentId =
+    (data['studentId'] ?? studentJson?['id'] ?? studentJson?['_id'] ?? '')
+        .toString();
+
+    // Prefer an explicit name from the payload; otherwise derive from the
+    // student object; otherwise fall back to the ID so the field is never
+    // null and UI code can rely on it.
+    final studentName = (data['studentName'] ??
+        studentJson?['fullName'] ??
+        studentJson?['name'] ??
+        '')
+        .toString();
 
     return Enrollment(
       id: (data['id'] ?? data['_id'] ?? '').toString(),
@@ -45,20 +64,17 @@ class Enrollment {
           courseJson?['_id'] ??
           '')
           .toString(),
-      courseName: (data['courseName'] ??
-          courseJson?['title'] ??
-          '')
-          .toString(),
-      studentId:
-      (data['studentId'] ?? data['student']?['id'] ?? '').toString(),
+      courseName:
+      (data['courseName'] ?? courseJson?['title'] ?? '').toString(),
+      studentId: studentId,
+      studentName: studentName.isNotEmpty ? studentName : studentId,
       status: EnrollmentStatus.values.firstWhere(
             (s) => s.name.toUpperCase() == statusStr,
         orElse: () => EnrollmentStatus.active,
       ),
       progressPercent:
       (data['progressPercent'] as num?)?.toInt() ?? 0,
-      courseThumbnailUrl:
-      (courseJson?['thumbnailUrl'])?.toString(),
+      courseThumbnailUrl: courseJson?['thumbnailUrl']?.toString(),
       instructorName: (instructorJson?['fullName'] ??
           instructorJson?['name'])
           ?.toString(),
@@ -70,8 +86,6 @@ class Enrollment {
       (data['totalLessonCount'] as num?)?.toInt() ?? 0,
     );
   }
-
-  String? get studentName => null;
 
   static DateTime? _parseDate(dynamic v) {
     if (v is String && v.isNotEmpty) return DateTime.tryParse(v);

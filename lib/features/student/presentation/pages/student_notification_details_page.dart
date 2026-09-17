@@ -4,20 +4,20 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../mock_data/mock_notifications.dart';
-import '../../../../mock_data/models/mock_notification.dart';
+import '../../data/models/notification.dart';
 
 class StudentNotificationDetailsPage extends StatelessWidget {
-  const StudentNotificationDetailsPage({
-    super.key,
-    required this.notificationId,
-  });
+  const StudentNotificationDetailsPage({super.key, this.notification});
 
-  final String notificationId;
+  final AppNotification? notification;
 
   @override
   Widget build(BuildContext context) {
-    final n = _find(notificationId);
+    // Prefer the constructor arg; fall back to the route argument.
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final n = notification ??
+        (args is AppNotification ? args : null);
+
     if (n == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -57,7 +57,7 @@ class StudentNotificationDetailsPage extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          n.type.wireValue,
+                          n.type.name.toUpperCase(),
                           style: AppTextStyles.labelSmall
                               .copyWith(color: AppColors.primary),
                         ),
@@ -80,12 +80,5 @@ class StudentNotificationDetailsPage extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  MockNotification? _find(String id) {
-    for (final n in MockNotifications.all) {
-      if (n.id == id) return n;
-    }
-    return null;
   }
 }

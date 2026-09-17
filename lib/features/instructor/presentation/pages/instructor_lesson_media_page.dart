@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/media_picker.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_success_message.dart';
 import '../../../../core/widgets/file_picker_field.dart';
-import '../../../../core/widgets/image_picker_field.dart';
 import '../../../../core/widgets/selected_file_card.dart';
 import '../../../../core/widgets/upload_preview.dart';
-import '../../../../mock_data/models/mock_lesson.dart';
+import '../../../student/data/models/lesson.dart';
+import '../../providers/instructor_course_provider.dart';
 
+/// Route arguments: {'courseId', 'sectionId', 'lessonId'}.
 class InstructorLessonMediaPage extends StatefulWidget {
-  const InstructorLessonMediaPage({super.key, required this.lessonId});
+  const InstructorLessonMediaPage({
+    super.key,
+    required this.courseId,
+    required this.sectionId,
+    required this.lessonId,
+  });
 
+  final String courseId;
+  final String sectionId;
   final String lessonId;
 
   @override
@@ -23,40 +33,113 @@ class InstructorLessonMediaPage extends StatefulWidget {
 
 class _InstructorLessonMediaPageState
     extends State<InstructorLessonMediaPage> {
-  // Phase 1: mock "selected" state only. Real pickers arrive with the
-  // backend integration phase.
-  String? _videoFileName;
-  String? _videoFileSize;
-  String? _documentFileName;
-  String? _documentFileSize;
-
   LessonType _type = LessonType.video;
+  PickedMedia? _picked;
+  double? _uploadProgress;
+  bool _uploading = false;
 
-  void _fakePickVideo() {
-    setState(() {
-      _videoFileName = 'lesson_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      _videoFileSize = '24.5MB';
-    });
+  Lesson? _lesson;
+
+  @override
+  void initState() {
+    super.initState();
+    final lessons = context
+        .read<InstructorCourseProvider>()
+        .lessonsFor(widget.courseId, widget.sectionId);
+    for (final l in lessons) {
+      if (l.id == widget.lessonId) {
+        _lesson = l;
+        _type = l.type == LessonType.text ? LessonType.video : l.type;
+        break;
+      }
+    }
   }
 
-  void _fakePickDocument() {
-    setState(() {
-      _documentFileName =
-      'lesson_document_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      _documentFileSize = '860KB';
-    });
-  }
-
-  void _fakePickThumbnail() {
-    AppSnackbar.showInfo(
-      context,
-      'Thumbnail picker arrives with backend integration.',
+  void _pickVideo() async {
+    final picked = await MediaPicker.pickFile(
+      allowedExtensions: ['mp4', 'mov', 'webm', 'mkv'],
     );
+    if (picked == null) return;
+    setState(() => _picked = picked);
   }
 
-  void _save() {
-    AppSnackbar.showSuccess(context, 'Media saved locally (mock).');
-    Navigator.of(context).pop();
+  void _pickDocument() async {
+    final picked = await MediaPicker.pickFile(
+      allowedExtensions: ['pdf', 'doc', 'docx', 'ppt', 'pptx'],
+    );
+    if (picked == null) return;
+    setState(() => _picked = picked);
+  }
+
+  Future<void> _upload() async {
+    final picked = _picked;
+    if (picked == null) return;
+
+    setState(() {
+      _uploading = true;
+      _uploadProgress = 0;
+    });
+
+    final p = context.read<InstructorCourseProvider>();
+    final ok = _type == LessonType.video
+        ? await p.uploadLessonVideo(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      lessonId: widget.lessonId,
+      filePath: picked.path,
+      fileName: picked.name,
+      mimeType: picked.mimeType,
+      onSendProgress: (sent, total) {
+        if (total > 0 && mounted) {
+          setState(() => _uploadProgress = sent / total);
+        }
+      },
+    )
+        : await p.uploadLessonDocument(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      lessonId: widget.lessonId,
+      filePath: picked.path,
+      fileName: picked.name,
+      mimeType: picked.mimeType,
+      onSendProgress: (sent, total) {
+        if (total > 0 && mounted) {
+          setState(() => _uploadProgress = sent / total);
+        }
+      },
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _uploading = false;
+      _uploadProgress = null;
+    });
+
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Media uploaded.');
+      setState(() => _picked = null);
+    } else {
+      AppSnackbar.showError(
+        context,
+        p.errorMessage ?? 'Upload failed.',
+      );
+    }
+  }
+
+  Future<void> _deleteMedia() async {
+    final ok = await context
+        .read<InstructorCourseProvider>()
+        .deleteLessonMedia(
+      courseId: widget.courseId,
+      sectionId: widget.sectionId,
+      lessonId: widget.lessonId,
+    );
+    if (!mounted) return;
+    if (ok) {
+      AppSnackbar.showSuccess(context, 'Media removed.');
+    } else {
+      AppSnackbar.showError(context, 'Could not remove media.');
+    }
   }
 
   @override
@@ -69,9 +152,8 @@ class _InstructorLessonMediaPageState
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            _noticeCard(),
+            _notice(),
             const SizedBox(height: AppSpacing.md),
-
             Text('Media type', style: AppTextStyles.labelMedium),
             const SizedBox(height: AppSpacing.xs),
             _typeSelector(),
@@ -80,50 +162,44 @@ class _InstructorLessonMediaPageState
             if (_type == LessonType.video) ...[
               Text('Video file', style: AppTextStyles.headingSmall),
               const SizedBox(height: AppSpacing.xs),
-              if (_videoFileName == null)
+              if (_picked == null)
                 FilePickerField(
-                  title: 'Upload lesson video',
+                  title: 'Select video',
                   allowedTypesLabel: 'MP4, MOV up to 500MB',
+                  allowedExtensions: const ['mp4', 'mov', 'webm', 'mkv'],
                   icon: Icons.videocam_outlined,
-                  onPickRequested: _fakePickVideo,
+                  onPicked: (m) => setState(() => _picked = m),
                 )
               else
                 UploadPreview(
-                  fileName: _videoFileName!,
+                  fileName: _picked!.name,
                   fileTypeLabel: 'VIDEO',
-                  fileSizeLabel: _videoFileSize,
-                  onRemove: () => setState(() {
-                    _videoFileName = null;
-                    _videoFileSize = null;
-                  }),
+                  fileSizeLabel: _picked!.sizeLabel,
+                  progress: _uploadProgress,
+                  onRemove: () => setState(() => _picked = null),
                 ),
-              const SizedBox(height: AppSpacing.lg),
-              Text('Thumbnail (optional)',
-                  style: AppTextStyles.headingSmall),
-              const SizedBox(height: AppSpacing.xs),
-              ImagePickerField(
-                label: 'Select thumbnail',
-                height: 140,
-                onPickRequested: _fakePickThumbnail,
-              ),
             ] else if (_type == LessonType.document) ...[
               Text('Document file', style: AppTextStyles.headingSmall),
               const SizedBox(height: AppSpacing.xs),
-              if (_documentFileName == null)
+              if (_picked == null)
                 FilePickerField(
-                  title: 'Upload document',
+                  title: 'Select document',
                   allowedTypesLabel: 'PDF, DOCX up to 20MB',
+                  allowedExtensions: const [
+                    'pdf',
+                    'doc',
+                    'docx',
+                    'ppt',
+                    'pptx',
+                  ],
                   icon: Icons.description_outlined,
-                  onPickRequested: _fakePickDocument,
+                  onPicked: (m) => setState(() => _picked = m),
                 )
               else
                 SelectedFileCard(
-                  fileName: _documentFileName!,
-                  fileSizeLabel: _documentFileSize,
-                  onRemove: () => setState(() {
-                    _documentFileName = null;
-                    _documentFileSize = null;
-                  }),
+                  fileName: _picked!.name,
+                  fileSizeLabel: _picked!.sizeLabel,
+                  onRemove: () => setState(() => _picked = null),
                 ),
             ] else ...[
               Container(
@@ -135,26 +211,36 @@ class _InstructorLessonMediaPageState
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(
-                  'TEXT lessons do not have attached media. Edit the lesson '
-                      'content from the lesson editor.',
+                  'TEXT lessons do not have attached media. Edit the lesson content from the lesson editor.',
                   style: AppTextStyles.bodySmall,
                 ),
               ),
             ],
 
             const SizedBox(height: AppSpacing.xl),
-            AppButton.primary(
-              label: 'Save Media',
-              icon: Icons.save_outlined,
-              onPressed: _save,
-            ),
+            if (_picked != null && !_uploading)
+              AppButton.primary(
+                label: 'Upload Media',
+                icon: Icons.cloud_upload_outlined,
+                onPressed: _upload,
+              ),
+            if (_lesson != null &&
+                ((_lesson!.videoUrl?.isNotEmpty ?? false) ||
+                    (_lesson!.documentUrl?.isNotEmpty ?? false))) ...[
+              const SizedBox(height: AppSpacing.sm),
+              AppButton.secondary(
+                label: 'Remove existing media',
+                icon: Icons.delete_outline_rounded,
+                onPressed: _uploading ? null : _deleteMedia,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _noticeCard() {
+  Widget _notice() {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -163,16 +249,12 @@ class _InstructorLessonMediaPageState
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline_rounded,
-            color: AppColors.primary,
-          ),
+          const Icon(Icons.info_outline_rounded,
+              color: AppColors.primary),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              'Media is not uploaded in this phase. In the backend '
-                  'integration phase, this screen will send multipart requests '
-                  'using the exact field names from the API contract.',
+              'Pick a file and tap Upload. Progress appears above.',
               style: AppTextStyles.bodySmall,
             ),
           ),
@@ -195,16 +277,16 @@ class _InstructorLessonMediaPageState
     final active = _type == t;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _type = t),
+        onTap: () => setState(() {
+          _type = t;
+          _picked = null;
+        }),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(
-            vertical: AppSpacing.sm,
-          ),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           decoration: BoxDecoration(
-            color: active
-                ? AppColors.primary
-                : AppColors.surfaceVariant,
+            color:
+            active ? AppColors.primary : AppColors.surfaceVariant,
             borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
             border: Border.all(
               color: active ? AppColors.primary : AppColors.border,
@@ -213,17 +295,18 @@ class _InstructorLessonMediaPageState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: active ? Colors.white : AppColors.textSecondary,
-              ),
+              Icon(icon,
+                  size: 18,
+                  color: active
+                      ? Colors.white
+                      : AppColors.textSecondary),
               const SizedBox(width: 6),
               Text(
-                t.label,
+                t.name.toUpperCase(),
                 style: AppTextStyles.labelMedium.copyWith(
-                  color:
-                  active ? Colors.white : AppColors.textSecondary,
+                  color: active
+                      ? Colors.white
+                      : AppColors.textSecondary,
                 ),
               ),
             ],

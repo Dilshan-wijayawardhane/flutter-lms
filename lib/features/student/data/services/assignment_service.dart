@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
+import '../../../../core/errors/api_exception.dart';
 import '../../../../core/network/api_client.dart';
 import '../models/assignment.dart';
 import '../models/submission.dart';
@@ -19,6 +20,41 @@ class AssignmentService {
         .map(Assignment.fromJson)
         .toList();
   }
+
+  Future<Assignment> uploadAssignmentAttachment({
+    required String assignmentId,
+    required String filePath,
+    required String fileName,
+    String? mimeType,
+    void Function(int, int)? onSendProgress,
+  }) async {
+    try {
+      final multipart = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mimeType != null
+            ? MediaType.parse(mimeType)
+            : null,
+      );
+      final form = FormData.fromMap({'attachment': multipart});
+
+      final res = await _client.upload<Map<String, dynamic>>(
+        '/api/v1/assignments/$assignmentId/attachment',
+        formData: form,
+        onSendProgress: onSendProgress,
+      );
+      return Assignment.fromJson(res);
+    } on DioException catch (e) {
+      throw ApiException.from(e.error ?? e);
+    }
+  }
+
+  Future<void> deleteAssignmentAttachment(String assignmentId) async {
+    await _client.delete<dynamic>(
+      '/api/v1/assignments/$assignmentId/attachment',
+    );
+  }
+
 
   /// Student-facing assignment list across enrolled courses.
   Future<List<Assignment>> listMine() async {

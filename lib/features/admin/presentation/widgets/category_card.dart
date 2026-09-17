@@ -4,10 +4,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_category.dart';
+import '../../../student/data/models/category.dart';
 
-/// Category row used on the admin categories page.
-/// Shows name, description, course count, and active/inactive status.
 class CategoryCard extends StatelessWidget {
   const CategoryCard({
     super.key,
@@ -17,7 +15,7 @@ class CategoryCard extends StatelessWidget {
     this.onToggleActive,
   });
 
-  final MockCategory category;
+  final CourseCategory category;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onToggleActive;

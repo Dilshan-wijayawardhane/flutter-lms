@@ -6,9 +6,8 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_status_chip.dart';
-import '../../../../mock_data/models/mock_review.dart';
+import '../../../student/data/models/review.dart';
 
-/// Review card used by the admin moderation screen.
 class ReviewModerationCard extends StatelessWidget {
   const ReviewModerationCard({
     super.key,
@@ -18,12 +17,12 @@ class ReviewModerationCard extends StatelessWidget {
     this.onTap,
   });
 
-  final MockReview review;
+  final CourseReview review;
   final VoidCallback? onHide;
   final VoidCallback? onShow;
   final VoidCallback? onTap;
 
-  bool get _isHidden => review.visibility == ReviewVisibility.hidden;
+  bool get _isHidden => !review.isVisible;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +99,8 @@ class ReviewModerationCard extends StatelessWidget {
                   if (_isHidden)
                     TextButton.icon(
                       onPressed: onShow,
-                      icon: const Icon(Icons.visibility_rounded, size: 18),
+                      icon: const Icon(Icons.visibility_rounded,
+                          size: 18),
                       label: const Text('Show'),
                     )
                   else
