@@ -1,117 +1,176 @@
-# Flutter LMS
+# Flutter LMS — Mobile Application
 
-A Learning Management System mobile application built with Flutter and Dart.
-
-This repository contains **Phase 1 — the complete frontend UI** for an LMS
-supporting three roles: **Student**, **Instructor**, and **Admin**. The backend
-will be integrated in Phase 2.
-
----
-
-## Status
-
-**Phase 1 (UI only) — Complete**
-
-- Full UI for Student, Instructor, and Admin roles
-- Feature-based architecture
-- Mock data driven — no backend calls yet
-- Material Design 3, responsive layouts, reusable widgets
-- Centralized routing, theming, and local form validation
-
-Phase 2 will connect this UI to the real backend using Docker, Postman, and
-Dio without restructuring the existing application.
+A cross-platform Learning Management System (LMS) mobile app built with
+Flutter for three roles: **Student**, **Instructor**, and **Admin**.
+Every screen is backed by a real REST API using Dio, with secure token
+storage, automatic Bearer auth, and multipart file uploads.
 
 ---
 
-## Roles and Features
+## Table of Contents
+
+- [Overview](#overview)
+- [Tech Stack](#tech-stack)
+- [Features by Role](#features-by-role)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment & Configuration](#environment--configuration)
+- [API Integration](#api-integration)
+- [State Management](#state-management)
+- [Authentication](#authentication)
+- [File Uploads](#file-uploads)
+- [Folder Conventions](#folder-conventions)
+- [Running the App](#running-the-app)
+- [Testing the Flows](#testing-the-flows)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
+## Overview
+
+Flutter LMS is a mobile-first Learning Management System that supports
+three distinct user roles. Each role has its own dashboard, navigation,
+and set of features. The UI is consistent, responsive, and follows
+Material 3 design principles.
+
+The app was built in two phases:
+
+1. **UI Phase** — complete visual layer with mock data.
+2. **Backend Integration Phase** — every screen connected to a real
+   REST API with Dio, secure token storage, and multipart uploads.
+
+This repository contains the **integrated** application.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Flutter (Dart 3) |
+| State Management | `provider` |
+| HTTP Client | `dio` |
+| Secure Storage | `flutter_secure_storage` |
+| Media Picking | `image_picker`, `file_picker` |
+| MIME Detection | `mime`, `http_parser` |
+| Typography | `google_fonts` (Inter) |
+| Target Platforms | Android (primary), iOS (secondary) |
+
+---
+
+## Features by Role
 
 ### Student
 
-- Splash, onboarding, login, registration, email verification (OTP)
-- Forgot password and password reset
-- Dashboard with stats, continue learning, upcoming assignments
-- Browse and search published courses by category
-- Course details with curriculum preview and enrollment action
-- My Learning with progress tracking
-- Learning page with sections and lessons
-- Lesson rendering for **TEXT**, **VIDEO**, and **DOCUMENT** lessons
-- Quiz list, attempt flow, result, and attempt history
-- Assignment list, details, submission (text + file), resubmission
-- Reviews (create, edit, delete)
-- Notifications list, details, unread count, mark as read
-- Profile, edit profile, account details, change password
+- **Authentication** — register, verify email OTP, login, forgot/reset password
+- **Dashboard** — enrolled courses, continue-learning card, stats, recommended courses
+- **Courses** — browse published courses, search, filter by category, view details
+- **Enrollment** — enroll in free/paid courses, view my learning
+- **Learning** — curriculum, sections, lessons (TEXT / VIDEO / DOCUMENT), mark complete
+- **Progress** — backend-driven course progress
+- **Quizzes** — attempt quizzes, submit answers, view score, view attempt history
+- **Assignments** — submit text or file, view feedback, resubmit when requested
+- **Reviews** — view, create, delete course reviews
+- **Notifications** — list, mark as read, mark all read, delete
+- **Profile** — edit profile, upload profile image, change password, account details, logout
 
 ### Instructor
 
-- Dashboard with courses, learners, submissions, and revenue stats
-- Course management (create, edit, publish, archive)
-- Course thumbnail selection UI
-- Sections (create, edit, reorder, delete)
-- Lessons (TEXT / VIDEO / DOCUMENT) with media upload UI
-- Quiz management (create, edit, publish, delete)
-- Question management (multiple choice with correct-answer selector)
-- Quiz attempts view
-- Assignment management with attachments
-- Submission review, grading, and resubmission requests
-- Learner list and per-learner progress view
-- Reviews view
-- Profile, edit profile, account, change password
+- **Dashboard** — total courses, learners, drafts, published, archived, quick actions
+- **Course Management** — create, edit, publish, archive, delete, upload thumbnail
+- **Sections** — create, edit, reorder, delete
+- **Lessons** — create/edit TEXT, VIDEO, DOCUMENT lessons, upload media, publish, reorder, delete
+- **Quizzes** — create quiz, edit, publish, manage questions, view student attempts
+- **Assignments** — create, edit, publish, attach resources, view submissions, grade, request resubmission
+- **Learners** — list enrollments per course, view learner progress
+- **Reviews** — view course reviews
+- **Profile** — edit profile, upload profile image, change password, account details, logout
 
 ### Admin
 
-- Dashboard with platform-wide statistics
-- User management (list, search, filter, view details)
-- Suspend and reactivate users
-- Category management (create, edit, activate, deactivate)
-- Course moderation (list, filter, view details, archive)
-- Enrollment list and details
-- Review moderation (hide, show)
-- Profile, account details, change password
+- **Dashboard** — platform-wide stats, recent users/courses/reviews/submissions, quick actions
+- **Users** — list, search, filter by role/status, view details, suspend, reactivate
+- **Categories** — create, edit, activate, deactivate
+- **Courses** — list all courses, search, filter by status/category, view details, archive
+- **Enrollments** — view enrollments per course, learner progress
+- **Review Moderation** — hide/show reviews
+- **Profile** — account details, change password, logout
 
 ---
 
 ## Project Structure
 
 lib/
-├── main.dart
-│
+
 ├── core/
-│ ├── constants/ # App-wide constants, strings, asset paths
-│ ├── routes/ # Centralized route names and router
-│ ├── theme/ # Colors, typography, spacing, ThemeData
-│ ├── utils/ # Validators, formatters, role helpers
+
+│ ├── config/ # AppConfig — base URL, timeouts
+
+│ ├── constants/ # App strings, sizes, asset paths
+
+│ ├── errors/ # ApiException — clean error mapping
+
+│ ├── network/ # ApiClient (Dio) + UploadService (multipart)
+
+│ ├── routes/ # AppRoutes + AppRouter
+
+│ ├── storage/ # TokenStorage (flutter_secure_storage)
+
+│ ├── theme/ # Colors, text styles, spacing, ThemeData
+
+│ ├── utils/ # Validators, formatters, media picker, LoadState
+
 │ └── widgets/ # Reusable widgets shared across features
+
 │
 ├── features/
-│ ├── auth/ # Splash, onboarding, login, registration, OTP
-│ ├── student/ # Student presentation layer
-│ ├── instructor/ # Instructor presentation layer
-│ └── admin/ # Admin presentation layer
+
+│ ├── auth/
+
+│ │ ├── data/
+
+│ │ │ ├── models/ # LoginRequest, RegisterRequest, etc.
+
+│ │ │ └── services/ # AuthService
+
+│ │ ├── presentation/ # Pages and widgets
+│ │ └── providers/ # AuthProvider
+
+│ │
+│ ├── student/
+
+│ │ ├── data/
+
+│ │ │ ├── models/ # Course, Lesson, Quiz, Assignment, etc.
+
+│ │ │ └── services/ # CourseService, EnrollmentService, etc.
+
+│ │ ├── presentation/ # Pages, widgets, StudentShell
+
+│ │ └── providers/ # CourseProvider, EnrollmentProvider, etc.
+
+│ │
+│ ├── instructor/
+
+│ │ ├── presentation/ # Pages, widgets, InstructorShell
+
+│ │ └── providers/ # InstructorCourseProvider, etc.
+
+│ │
+│ └── admin/
+
+│ ├── data/
+
+│ │ └── services/ # AdminUserService
+
+│ ├── presentation/ # Pages, widgets, AdminShell
+
+│ └── providers/ # AdminUserProvider, AdminCourseProvider, etc.
+
 │
-└── mock_data/
-├── models/ # Typed models with fromJson/toJson stubs
-└── *.dart # Realistic mock data per feature
+└── main.dart # MultiProvider + MaterialApp
 
-
-### Design principles
-
-- **Feature-based** — Student, Instructor, and Admin presentation layers
-  never import from each other.
-- **Shared code lives in `core/`** — nothing feature-specific leaks into
-  the shared layer.
-- **Backend-ready** — every model has `fromJson` / `toJson` stubs; enum
-  `wireValue` getters match backend contract strings exactly.
-- **No hardcoded backend IDs, tokens, or secrets.**
-
----
-
-## Tech Stack
-
-- **Flutter** (Dart 3)
-- **Material Design 3**
-- **google_fonts** — Inter typeface
-- No state-management dependency in Phase 1 — plain `setState` and
-  `ChangeNotifier` only
 
 ---
 
@@ -119,68 +178,250 @@ lib/
 
 ### Prerequisites
 
-- Flutter SDK 3.3 or later
-- Dart 3.3 or later
-- Android Studio / VS Code with the Flutter plugin
-- A device or emulator (Android phone size recommended)
+- **Flutter SDK** ≥ 3.3.0
+- **Dart SDK** ≥ 3.3.0
+- **Android Studio** or **VS Code** with the Flutter extension
+- **Android emulator** or a physical device
+- The **backend API** running (see the backend repository)
 
-### Run
+### Clone the repository
 
 ```bash
+git clone https://github.com/Dilshan-wijayawardhane/flutter-lms.git
+cd flutter-lms
+```
+
+### Install dependencies
+```bash
+
 flutter pub get
-flutter run
+```
 
-Static analysis
-bash
+### Environment & Configuration
 
+The backend URL is set in lib/core/config/app_config.dart:
+
+```bash
+
+static const String baseUrl = 'http://10.0.2.2:5000';
+
+```
+
+Environment	          Base URL
+-----
+Android emulator	                               http://10.0.2.2:5000
+
+iOS simulator	                                      http://localhost:5000
+
+Physical device (LAN)	                          http://<your-lan-ip>:5000
+
+Production	Set to your                         HTTPS host
+
+---
+
+Important: the base URL does not include /api/v1. Every endpoint path already carries that prefix.
+API Integration
+
+    All requests go through ApiClient (lib/core/network/api_client.dart).
+
+    Every request automatically attaches Authorization: Bearer <token> when a session exists.
+
+    Errors are converted into a single ApiException type with a clean message.
+
+    File uploads go through UploadService using Dio's FormData.
+
+No UI code calls Dio directly. Every screen goes through a provider → service → ApiClient chain.
+State Management
+
+The app uses provider with ChangeNotifier. One provider per feature area:
+
+    AuthProvider — login, logout, session restore
+
+    ProfileProvider — full profile for the logged-in user
+
+    CourseProvider, CategoryProvider, EnrollmentProvider — student browsing + enrollment
+
+    LearningProvider, LessonProvider — student learning experience
+
+    QuizProvider, AssignmentProvider, ReviewProvider, NotificationProvider — student content
+
+    InstructorCourseProvider, InstructorQuizProvider, InstructorAssignmentProvider, InstructorLearnerProvider — instructor tools
+
+    AdminUserProvider, AdminCourseProvider, AdminEnrollmentProvider, AdminReviewProvider — admin tools
+
+All providers share a common LoadState enum (lib/core/utils/load_state.dart):
+
+```bash
+
+enum LoadState { initial, loading, success, error }
+
+```
+
+### Authentication
+
+    Login — POST /api/v1/auth/login
+
+    Student registration — POST /api/v1/auth/register/student
+
+    Instructor registration — POST /api/v1/auth/register/instructor
+
+    Email verification — POST /api/v1/auth/verify-email
+
+    Resend OTP — POST /api/v1/auth/resend-otp
+
+    Forgot password — POST /api/v1/auth/forgot-password
+
+    Reset password — POST /api/v1/auth/reset-password
+
+    Logout — POST /api/v1/auth/logout
+
+Tokens are stored in flutter_secure_storage (Keychain on iOS, EncryptedSharedPreferences on Android).
+
+After login, the role determines which shell loads:
+
+    STUDENT → StudentShell
+
+    INSTRUCTOR → InstructorShell
+
+    ADMIN → AdminShell
+
+### File Uploads
+
+Multipart endpoints handled by UploadService:
+
+Feature	                    Endpoint	                                 Field
+-
+
+Profile image	                                       POST /api/v1/users/me/profile-image	                             image
+
+Course thumbnail	                                POST /api/v1/courses/:id/thumbnail	                               thumbnail
+
+Lesson video	                                        POST /api/v1/lessons/:id/video	                                       video
+
+Lesson document	                                 POST /api/v1/lessons/:id/document                                document
+
+Assignment attachment	                        POST /api/v1/assignments/:id/attachment	                    attachment
+
+Student submission file	                         POST /api/v1/assignments/:id/submit/file	                     file
+
+Replace submission file	                         POST /api/v1/assignments/:id/submission/file	              file
+
+
+
+
+Upload progress is displayed via LinearProgressIndicator.
+
+
+### Folder Conventions
+
+    data/models/ — plain Dart classes with fromJson factories. No Flutter imports.
+
+    data/services/ — thin wrappers over ApiClient. Only place that knows endpoint paths.
+
+    presentation/pages/ — full screens. Named after the feature.
+
+    presentation/widgets/ — feature-specific widgets.
+
+    providers/ — ChangeNotifier state.
+
+    core/widgets/ — shared widgets (used by 2+ features).
+
+    core/theme/ — colors, text styles, spacing, ThemeData.
+
+### Running the App
+
+Start the backend first, then:
+
+``` bash
+
+flutter clean
+flutter pub get
 flutter analyze
+flutter run
+```
 
-Build (Android)
-bash
+The app boots into the splash screen, checks for a saved session, and either
+restores the session or routes to onboarding → login.
 
-flutter build apk --release
+### Demo accounts
 
-Demo Login
+Use the backend's seeded accounts (e.g. from a .env or seed script) or
+register a new student account and verify the OTP from the backend logs.
 
-Phase 1 uses mock authentication. Any valid email and password signs in
-with the role selected on the login screen:
-Role	How to log in
-Student	Select Student on the login screen, enter any valid email + password
-Instructor	Select Instructor on the login screen, enter any valid email + password
-Admin	Select Admin on the login screen, enter any valid email + password
+### Testing the Flows
 
-No real authentication happens in Phase 1.
-Roadmap
-Phase 1 — UI Only (current)
+### Student
 
-    Complete UI for all three roles
+    Register → verify OTP → login
 
-    Navigation, reusable widgets, local validation
+    Browse courses → open details → enroll → open learning page
 
-    Mock data for every feature
+    Open a lesson (TEXT / VIDEO / DOCUMENT) → mark complete
 
-Phase 2 — Backend Integration
+    Open an assignment → submit text or file → view feedback
 
-    Dockerized backend and Postman contract validation
+    Take a quiz → view score + attempt history
 
-    Dio-based API client with interceptors
+    Profile → edit → upload profile image
 
-    Secure token storage and automatic refresh
+### Instructor
 
-    Real authentication and role-based routing
+    Login → dashboard
 
-    Real API integration for Student, Instructor, and Admin
+    Courses → create course → add sections → add lessons → publish
 
-    Multipart uploads for thumbnails, media, and submission files
+    Quizzes → create quiz → add questions → publish
 
-The backend contract (from the official API report and Postman collection)
-is the source of truth during Phase 2. UI will not drive the contract.
-License
+    Assignments → create → publish → grade submissions → request resubmission
 
-This project is currently unlicensed and intended for portfolio and
-internship evaluation purposes.
-Author
+    Learners → view enrollment list per course
 
-Dilshan Wijayawardhane
-github.com/Dilshan-wijayawardhane
+### Admin
+
+    Login → dashboard
+
+    Users → search → filter → suspend / reactivate
+
+    Categories → create / edit / activate / deactivate
+
+    Courses → filter → view details → archive
+
+    Reviews → hide / show
+
+### Roadmap
+
+The following are intentionally not implemented yet and can be added later:
+
+    Automatic token refresh on 401 (retry interceptor)
+
+    Pagination for long lists
+
+    Offline caching / persistence
+
+    Push notifications
+
+    Dark theme
+
+    Localization (i18n)
+
+    Course video player
+
+    Certificate generation
+
+    Payment integration for paid courses
+
+### License
+
+This project is submitted as part of an internship task.
+See the repository owner for licensing details.
+
+### Built with Flutter · Powered by a Docker-based REST API
+
+
+
+
+
+
+
+
 
